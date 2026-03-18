@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>BTC 双币赢决策终端</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg-primary:#0a0e17;--bg-card:#111827;--bg-card-alt:#0f1729;
+--border:#1e293b;--border-active:#334155;
+--text-primary:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#64748b;
+--green:#10b981;--green-glow:#10b98140;--green-bg:#10b98115;
+--red:#ef4444;--red-glow:#ef444440;--red-bg:#ef444415;
+--yellow:#f59e0b;--yellow-glow:#f59e0b40;--yellow-bg:#f59e0b15;
+--blue:#3b82f6;--blue-glow:#3b82f640;
+--cyan:#06b6d4;--cyan-glow:#06b6d440;
+--purple:#a855f7;--purple-glow:#a855f740;
+--orange:#f97316;
+}
+html{font-size:14px}
+body{background:var(--bg-primary);color:var(--text-primary);font-family:'Noto Sans SC','JetBrains Mono',sans-serif;min-height:100vh;overflow-x:hidden;
+padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.mono{font-family:'JetBrains Mono',monospace;overflow-wrap:break-word}
+
+/* Scanline effect */
+body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;
+background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px)}
+
+/* Header */
+.header{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#111827 0%,var(--bg-primary) 100%)}
+.header-left{display:flex;align-items:center;gap:16px}
+.logo{font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;letter-spacing:2px;color:var(--cyan);text-shadow:0 0 20px var(--cyan-glow)}
+.logo span{color:var(--yellow)}
+.btc-price{display:flex;align-items:baseline;gap:8px}
+.btc-price .price{font-family:'JetBrains Mono',monospace;font-size:1.8rem;font-weight:700;color:#fff}
+.btc-price .change{font-family:'JetBrains Mono',monospace;font-size:.85rem;padding:2px 8px;border-radius:4px}
+.change.up{background:var(--green-bg);color:var(--green)}
+.change.down{background:var(--red-bg);color:var(--red)}
+.header-right{display:flex;align-items:center;gap:16px}
+.timestamp{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-muted)}
+.refresh-btn{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:.8rem;font-family:'JetBrains Mono',monospace;transition:.2s}
+.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px var(--cyan-glow)}
+
+/* Traffic Light */
+.traffic-light-bar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:stretch;gap:16px}
+.signal-main{flex:1;padding:20px 24px;border-radius:12px;display:flex;align-items:center;gap:20px;position:relative;overflow:hidden}
+.signal-main.green{background:linear-gradient(135deg,#10b98112,#10b98108);border:1px solid #10b98130}
+.signal-main.yellow{background:linear-gradient(135deg,#f59e0b12,#f59e0b08);border:1px solid #f59e0b30}
+.signal-main.red{background:linear-gradient(135deg,#ef444412,#ef444408);border:1px solid #ef444430}
+.signal-icon{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0}
+.signal-main.green .signal-icon{background:radial-gradient(circle,#10b981,#059669);box-shadow:0 0 30px var(--green-glow)}
+.signal-main.yellow .signal-icon{background:radial-gradient(circle,#f59e0b,#d97706);box-shadow:0 0 30px var(--yellow-glow)}
+.signal-main.red .signal-icon{background:radial-gradient(circle,#ef4444,#dc2626);box-shadow:0 0 30px var(--red-glow)}
+.signal-content h2{font-size:1.15rem;font-weight:700;margin-bottom:4px}
+.signal-content p{font-size:.85rem;color:var(--text-secondary);line-height:1.5}
+.signal-stats{display:flex;gap:12px;margin-left:auto;flex-shrink:0}
+.signal-stat{text-align:center;padding:8px 16px;background:rgba(0,0,0,.3);border-radius:8px;min-width:90px}
+.signal-stat label{font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:4px}
+.signal-stat .val{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:600}
+
+/* Grid */
+.dashboard{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);padding:0}
+.module{background:var(--bg-primary);padding:20px}
+.module-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.module-num{font-family:'JetBrains Mono',monospace;font-size:.65rem;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:1px}
+.m1 .module-num{background:var(--purple-glow);color:var(--purple)}
+.m2 .module-num{background:var(--red-glow);color:var(--red)}
+.m3 .module-num{background:var(--blue-glow);color:var(--blue)}
+.m4 .module-num{background:var(--yellow-glow);color:var(--yellow)}
+.module-title{font-size:.95rem;font-weight:700;letter-spacing:.5px}
+.module-subtitle{font-size:.7rem;color:var(--text-muted);margin-left:auto;font-family:'JetBrains Mono',monospace}
+
+/* Metric Card */
+.metric-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;transition:.2s}
+.metric-card:hover{border-color:var(--border-active)}
+.metric-card:last-child{margin-bottom:0}
+.metric-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.metric-name{font-size:.8rem;font-weight:500;color:var(--text-secondary)}
+.metric-badge{font-family:'JetBrains Mono',monospace;font-size:.65rem;padding:2px 8px;border-radius:4px;font-weight:600}
+.badge-safe{background:var(--green-bg);color:var(--green)}
+.badge-warn{background:var(--yellow-bg);color:var(--yellow)}
+.badge-danger{background:var(--red-bg);color:var(--red)}
+.metric-value-row{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+.metric-value{font-family:'JetBrains Mono',monospace;font-size:1.6rem;font-weight:700}
+.metric-sub{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--text-muted)}
+.metric-bar{height:6px;background:#1e293b;border-radius:3px;overflow:hidden;margin-bottom:10px}
+.metric-bar-fill{height:100%;border-radius:3px;transition:width .8s ease}
+.metric-explain{font-size:.75rem;color:var(--text-secondary);line-height:1.6;padding:10px 12px;background:var(--bg-card-alt);border-radius:6px;border-left:3px solid var(--border)}
+.metric-explain strong{color:var(--text-primary)}
+
+/* Chart Container */
+.chart-wrap{position:relative;height:100px;margin:12px 0}
+.chart-wrap canvas{width:100%!important;height:100%!important}
+
+/* Gauge */
+.gauge{display:flex;align-items:center;gap:16px;margin:10px 0}
+.gauge-visual{width:80px;height:40px;position:relative}
+.gauge-arc{stroke-dasharray:126;stroke-dashoffset:0;transition:stroke-dashoffset .8s}
+.gauge-label{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-muted)}
+
+/* Safety Calculator */
+.calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.calc-item{background:var(--bg-card-alt);padding:12px;border-radius:8px;text-align:center}
+.calc-item label{font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px}
+.calc-item .val{font-family:'JetBrains Mono',monospace;font-size:1.2rem;font-weight:700}
+.calc-item .val.green{color:var(--green)}.calc-item .val.red{color:var(--red)}.calc-item .val.yellow{color:var(--yellow)}.calc-item .val.cyan{color:var(--cyan)}
+
+/* Level Lines */
+.level-line{display:flex;align-items:center;padding:8px 12px;margin-bottom:6px;border-radius:6px;background:var(--bg-card-alt);font-family:'JetBrains Mono',monospace;font-size:.8rem}
+.level-dot{width:8px;height:8px;border-radius:50%;margin-right:10px;flex-shrink:0}
+.level-label{color:var(--text-muted);margin-right:auto;font-size:.75rem}
+.level-price{font-weight:600}
+.level-pct{color:var(--text-muted);margin-left:8px;font-size:.75rem}
+
+/* Event Timer */
+.event-item{display:flex;align-items:center;padding:12px;margin-bottom:8px;border-radius:8px;background:var(--bg-card);border:1px solid var(--border)}
+.event-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;margin-right:12px;flex-shrink:0}
+.event-icon.fed{background:#7c3aed20;color:#a78bfa}
+.event-icon.cpi{background:#f59e0b20;color:#fbbf24}
+.event-icon.nfp{background:#ef444420;color:#f87171}
+.event-icon.token{background:#06b6d420;color:#22d3ee}
+.event-info{flex:1}
+.event-name{font-size:.8rem;font-weight:600}
+.event-date{font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+.event-countdown{font-family:'JetBrains Mono',monospace;font-size:.85rem;font-weight:700;text-align:right}
+.event-countdown.urgent{color:var(--red);text-shadow:0 0 10px var(--red-glow)}
+.event-countdown.normal{color:var(--text-secondary)}
+
+/* Heatmap */
+.heatmap{position:relative;height:120px;margin:12px 0;background:var(--bg-card-alt);border-radius:8px;overflow:hidden}
+.heatmap-bar{position:absolute;bottom:0;opacity:.7;border-radius:2px 2px 0 0;transition:height .5s}
+.heatmap-marker{position:absolute;width:2px;height:100%;background:var(--text-primary);z-index:2}
+.heatmap-marker::after{content:'现价';position:absolute;top:4px;left:6px;font-size:.6rem;color:var(--text-primary);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+
+/* Recommendation Box */
+.rec-box{margin-top:16px;padding:16px 20px;border-radius:10px;border:1px dashed}
+.rec-box.green{border-color:#10b98150;background:#10b98108}
+.rec-box.yellow{border-color:#f59e0b50;background:#f59e0b08}
+.rec-box.red{border-color:#ef444450;background:#ef444408}
+.rec-title{font-size:.85rem;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.rec-body{font-size:.78rem;color:var(--text-secondary);line-height:1.7}
+.rec-body strong{color:var(--text-primary)}
+
+/* Sparkline inline */
+.sparkline{display:inline-block;vertical-align:middle}
+
+/* Animations */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.metric-card{animation:slideUp .4s ease both}
+.metric-card:nth-child(2){animation-delay:.1s}
+.metric-card:nth-child(3){animation-delay:.2s}
+
+/* Pulse dot */
+.pulse-dot{width:8px;height:8px;border-radius:50%;display:inline-block;animation:pulse 2s infinite}
+.pulse-dot.green{background:var(--green);box-shadow:0 0 8px var(--green-glow)}
+.pulse-dot.red{background:var(--red);box-shadow:0 0 8px var(--red-glow)}
+.pulse-dot.yellow{background:var(--yellow);box-shadow:0 0 8px var(--yellow-glow)}
+
+/* Vol chart canvas */
+.vol-chart{width:100%;height:80px;margin:8px 0}
+
+/* ═══ Responsive: Tablet (≤900px) ═══ */
+@media(max-width:900px){
+html{font-size:13px}
+.dashboard{grid-template-columns:1fr}
+.traffic-light-bar{flex-direction:column;padding:12px 16px}
+.signal-main{flex-direction:column;align-items:flex-start;padding:16px}
+.signal-stats{margin-left:0;margin-top:12px;width:100%;justify-content:space-between}
+.signal-stat{flex:1}
+.header{padding:12px 16px}
+.btc-price .price{font-size:1.5rem}
+.module{padding:16px}
+.calc-item .val{font-size:1rem}
+}
+
+/* ═══ Responsive: Mobile (≤600px) ═══ */
+@media(max-width:600px){
+html{font-size:12px}
+
+/* Header: stack vertically */
+.header{flex-direction:column;align-items:flex-start;gap:10px;padding:12px 14px}
+.header-left{flex-direction:column;align-items:flex-start;gap:6px;width:100%}
+.header-right{width:100%;justify-content:space-between}
+.logo{font-size:.95rem;letter-spacing:1.5px}
+.btc-price{width:100%}
+.btc-price .price{font-size:1.6rem}
+.btc-price .change{font-size:.75rem}
+.refresh-btn{padding:8px 12px;font-size:.75rem;flex-shrink:0}
+.timestamp{font-size:.7rem}
+
+/* Traffic Light */
+.traffic-light-bar{padding:10px 12px;gap:10px}
+.signal-main{flex-direction:column;align-items:flex-start;gap:12px;padding:14px}
+.signal-icon{width:44px;height:44px;font-size:1.3rem}
+.signal-content h2{font-size:1rem}
+.signal-content p{font-size:.78rem}
+.signal-stats{flex-wrap:wrap;gap:8px;margin-left:0;margin-top:8px;width:100%}
+.signal-stat{flex:1 1 40%;min-width:0;padding:6px 10px}
+.signal-stat label{font-size:.6rem}
+.signal-stat .val{font-size:.9rem}
+
+/* Modules */
+.module{padding:12px}
+.module-header{flex-wrap:wrap;gap:6px;margin-bottom:12px;padding-bottom:10px}
+.module-num{font-size:.6rem;padding:2px 6px}
+.module-title{font-size:.88rem}
+.module-subtitle{font-size:.65rem;width:100%;margin-left:0;margin-top:2px}
+
+/* Metric Cards */
+.metric-card{padding:12px;margin-bottom:10px}
+.metric-name{font-size:.75rem}
+.metric-badge{font-size:.6rem;padding:2px 6px}
+.metric-value{font-size:1.3rem}
+.metric-sub{font-size:.7rem}
+.metric-explain{font-size:.72rem;padding:8px 10px}
+
+/* Calc Grid: stack on small screens */
+.calc-grid{grid-template-columns:1fr 1fr;gap:8px}
+.calc-item{padding:10px 8px}
+.calc-item label{font-size:.6rem}
+.calc-item .val{font-size:.95rem;word-break:break-all}
+
+/* Level Lines */
+.level-line{padding:6px 10px;font-size:.75rem;flex-wrap:wrap;gap:4px}
+.level-label{font-size:.7rem}
+.level-price{font-size:.8rem}
+.level-pct{font-size:.68rem}
+
+/* Events */
+.event-item{padding:10px;flex-wrap:wrap;gap:8px}
+.event-icon{width:32px;height:32px;font-size:.9rem;margin-right:8px}
+.event-name{font-size:.75rem}
+.event-date{font-size:.65rem}
+.event-countdown{font-size:.78rem}
+
+/* Heatmap */
+.heatmap{height:90px}
+
+/* IV/RV Chart */
+.vol-chart{height:60px}
+
+/* Recommendation box in traffic light */
+.rec-box{flex:0 0 auto!important;width:100%;padding:12px 14px}
+.rec-title{font-size:.8rem}
+.rec-body{font-size:.72rem}
+
+/* Put/Call skew bar text */
+.metric-card div[style*="flex:"] {font-size:.6rem!important}
+}
+
+/* ═══ Responsive: Small Mobile (≤380px) ═══ */
+@media(max-width:380px){
+html{font-size:11px}
+.btc-price .price{font-size:1.4rem}
+.signal-stats{gap:6px}
+.signal-stat{padding:5px 6px}
+.calc-grid{grid-template-columns:1fr}
+.calc-item .val{font-size:.88rem}
+.metric-value{font-size:1.15rem}
+.level-line{padding:5px 8px}
+.event-item{padding:8px}
+
+/* Ensure long mono values don't overflow */
+.mono{word-break:break-all}
+}
+
+/* ═══ Touch-friendly enhancements ═══ */
+@media(hover:none) and (pointer:coarse){
+.refresh-btn{padding:10px 16px;font-size:.85rem;min-height:44px}
+.metric-card{-webkit-tap-highlight-color:transparent}
+.event-item{min-height:48px}
+}
+
+/* ═══ Landscape phone ═══ */
+@media(max-height:500px) and (orientation:landscape){
+.header{padding:8px 14px}
+.traffic-light-bar{padding:8px 12px}
+.signal-main{padding:10px 14px}
+.signal-icon{width:36px;height:36px;font-size:1rem}
+.module{padding:10px}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">DUAL<span>WIN</span> TERMINAL</div>
+    <div class="btc-price">
+      <span class="price" id="btcPrice">$---,---</span>
+      <span class="change up" id="btcChange">+0.00%</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="timestamp" id="timestamp">--</div>
+    <button class="refresh-btn" onclick="forceRefresh()">⟳ 刷新数据</button>
+  </div>
+</div>
+
+<div class="traffic-light-bar" id="trafficLight">
+  <!-- Populated by JS -->
+</div>
+
+<div class="dashboard">
+  <!-- Module 1 -->
+  <div class="module m1" id="module1"></div>
+  <!-- Module 2 -->
+  <div class="module m2" id="module2"></div>
+  <!-- Module 3 -->
+  <div class="module m3" id="module3"></div>
+  <!-- Module 4 -->
+  <div class="module m4" id="module4"></div>
+</div>
+
+<script>
+// ─── Real Data API Client ───
+// 从后端 API 拉取缓存数据，后端负责定时刷新
+// 后端地址: 同源部署时为 '', 分离部署时改为后端 URL
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? `http://${window.location.hostname}:3000`
+  : '';  // 同源部署
+
+let lastData = null; // 缓存上次成功的数据
+
+async function fetchDashboardData() {
+  try {
+    const res = await fetch(`${API_BASE}/api/dashboard`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    lastData = json;
+    return json;
+  } catch (err) {
+    console.error('[API] 拉取失败:', err.message);
+    return lastData; // 返回上次缓存
+  }
+}
+
+/** 将后端返回数据转换为前端渲染所需格式 */
+function transformData(raw) {
+  const price = raw.price?.price || 0;
+  const change = raw.price?.change24h || 0;
+
+  // 波动率 (来自 Deribit)
+  const iv = raw.volatility?.iv || 50;
+  const rv = raw.volatility?.rv || 40;
+  const skew = raw.volatility?.skew || { putIV: 48, callIV: 42, skew: 6 };
+
+  // 技术指标 (来自 Binance K 线计算)
+  const bb = raw.technicals?.bb || { width: 6, squeeze: false, percentile: 50 };
+  const adx = raw.technicals?.adx || { value: 20, trend: 'flat', di_plus: 22, di_minus: 18 };
+  const atr = raw.technicals?.atr || { value: 2500, pct: 3, safe15x: 4.5 };
+
+  // 分形支撑/阻力
+  const fractals = raw.fractals || { resistances: [], supports: [] };
+
+  // 清算数据
+  const liqZones = raw.liquidation?.zones || raw.liquidation?.data || [];
+
+  // 宏观事件 → 转换日期对象
+  const events = (raw.macro?.events || []).map(e => ({
+    ...e,
+    date: new Date(e.date),
+  }));
+
+  return { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, events };
+}
+
+// ─── Decision Logic ───
+function computeDecision(data) {
+  let score = 0; // -10 to +10
+  let reasons = [];
+
+  // IV vs RV
+  if (data.iv > data.rv * 1.2) { score += 2; reasons.push('IV溢价丰富，卖权有正期望'); }
+  else if (data.iv < data.rv) { score -= 3; reasons.push('⚠ IV < RV，期权卖便宜了'); }
+  else { score += 1; reasons.push('IV略高于RV，溢价一般'); }
+
+  // BB Squeeze
+  if (data.bb.squeeze) { score -= 3; reasons.push('⚠ 布林带极度收窄，即将突破'); }
+  else if (data.bb.width < 6) { score -= 1; reasons.push('布林带偏窄，需留意'); }
+  else { score += 1; reasons.push('布林带正常，波动空间充足'); }
+
+  // ADX
+  if (data.adx.value < 25) { score += 2; reasons.push('ADX<25 震荡市，双币赢印钞机模式'); }
+  else if (data.adx.value > 30) { score -= 2; reasons.push('⚠ ADX>30 趋势已成，当心单边'); }
+  else { score += 0; reasons.push('ADX处于过渡区间'); }
+
+  // Macro events within 24h
+  const now = Date.now();
+  const urgentEvents = data.events.filter(e => (e.date.getTime() - now) < 86400000 && e.impact === 'high');
+  if (urgentEvents.length > 0) { score -= 3; reasons.push(`⚠ ${urgentEvents.length}个重大事件在24h内`); }
+
+  let signal, level, advice;
+  if (score >= 3) {
+    signal = 'green'; level = '🟢 绿灯';
+    advice = `建议选择距离现价 ${data.atr.safe15x.toFixed(1)}% 以外、年化 15-20% 区间的产品，优先执行分形低点外侧的"低买"。`;
+  } else if (score >= -1) {
+    signal = 'yellow'; level = '🟡 黄灯';
+    advice = `谨慎操作，建议年化降至 10-15%，执行价放远至 ${(data.atr.safe15x * 1.3).toFixed(1)}% 以外。仅选择分形关键位保护的方向。`;
+  } else {
+    signal = 'red'; level = '🔴 红灯';
+    advice = '今日暂停购买双币赢！资金保留在法币账户或稳定币活期理财赚取利息。风险远超收益。';
+  }
+
+  return { signal, level, score, reasons, advice };
+}
+
+// ─── Render Functions ───
+function fmt(n) { return n.toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+function fmtP(n) { return n.toFixed(2) + '%'; }
+
+function renderTrafficLight(decision, data) {
+  const el = document.getElementById('trafficLight');
+  el.innerHTML = `
+    <div class="signal-main ${decision.signal}">
+      <div class="signal-icon">${decision.signal === 'green' ? '✓' : decision.signal === 'yellow' ? '⚡' : '✕'}</div>
+      <div class="signal-content">
+        <h2>今日决策：${decision.level} ${decision.signal === 'green' ? '适合做双币赢' : decision.signal === 'yellow' ? '谨慎操作' : '暂停购买'}</h2>
+        <p>${decision.advice}</p>
+      </div>
+      <div class="signal-stats">
+        <div class="signal-stat">
+          <label>综合评分</label>
+          <div class="val mono" style="color:var(--${decision.signal})">${decision.score > 0 ? '+' : ''}${decision.score}</div>
+        </div>
+        <div class="signal-stat">
+          <label>安全距离</label>
+          <div class="val mono" style="color:var(--cyan)">${fmtP(data.atr.safe15x)}</div>
+        </div>
+        <div class="signal-stat">
+          <label>IV溢价</label>
+          <div class="val mono" style="color:${data.iv > data.rv ? 'var(--green)' : 'var(--red)'}">${data.iv > data.rv ? '+' : ''}${(data.iv - data.rv).toFixed(1)}%</div>
+        </div>
+        <div class="signal-stat">
+          <label>市场状态</label>
+          <div class="val mono">${data.adx.value < 25 ? '震荡' : data.adx.value < 30 ? '过渡' : '趋势'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderModule1(data) {
+  const ivRvSpread = data.iv - data.rv;
+  const ivStatus = ivRvSpread > 10 ? 'safe' : ivRvSpread > 0 ? 'warn' : 'danger';
+  const skewStatus = data.skew.skew > 8 ? 'warn' : data.skew.skew > 3 ? 'safe' : 'safe';
+
+  document.getElementById('module1').innerHTML = `
+    <div class="module-header">
+      <span class="module-num">M1</span>
+      <span class="module-title">波动率与定价</span>
+      <span class="module-subtitle">核心盈利指标</span>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">隐含波动率 vs 实际波动率 (IV vs RV)</span>
+        <span class="metric-badge badge-${ivStatus}">${ivStatus === 'safe' ? '溢价丰富' : ivStatus === 'warn' ? '溢价偏低' : '⚠ 倒挂'}</span>
+      </div>
+      <div class="metric-value-row">
+        <span class="metric-value" style="color:${ivRvSpread > 0 ? 'var(--green)' : 'var(--red)'}">
+          ${ivRvSpread > 0 ? '+' : ''}${ivRvSpread.toFixed(1)}%
+        </span>
+        <span class="metric-sub">IV ${data.iv.toFixed(1)}% / RV ${data.rv.toFixed(1)}%</span>
+      </div>
+      <div class="metric-bar">
+        <div class="metric-bar-fill" style="width:${Math.min(100, (data.iv / (data.iv + data.rv)) * 100)}%;background:${ivRvSpread > 0 ? 'var(--green)' : 'var(--red)'}"></div>
+      </div>
+      <canvas id="ivrvChart" class="vol-chart"></canvas>
+      <div class="metric-explain">
+        <strong>决策逻辑：</strong>IV > RV 时做双币赢有正期望。当前 IV ${data.iv > data.rv ? '高于' : '低于'} RV ${Math.abs(ivRvSpread).toFixed(1)} 个百分点，
+        ${ivRvSpread > 10 ? '溢价充足，是做双币赢的好时机。' : ivRvSpread > 0 ? '溢价一般，建议适当降低年化目标。' : '期权卖便宜了，建议退守稳定币理财！'}
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">多空波动率偏度 (Vol Skew)</span>
+        <span class="metric-badge badge-${skewStatus}">${data.skew.skew > 8 ? 'Put偏度高' : data.skew.skew > 3 ? '轻微偏空' : '均衡'}</span>
+      </div>
+      <div class="metric-value-row">
+        <span class="metric-value">${data.skew.skew > 0 ? '+' : ''}${data.skew.skew.toFixed(1)}%</span>
+        <span class="metric-sub">Put ${data.skew.putIV.toFixed(1)}% / Call ${data.skew.callIV.toFixed(1)}%</span>
+      </div>
+      <div style="display:flex;gap:8px;margin:8px 0">
+        <div style="flex:${data.skew.putIV};height:24px;background:linear-gradient(90deg,var(--red),var(--red-glow));border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-family:'JetBrains Mono',monospace">PUT ${data.skew.putIV.toFixed(0)}%</div>
+        <div style="flex:${data.skew.callIV};height:24px;background:linear-gradient(90deg,var(--green-glow),var(--green));border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-family:'JetBrains Mono',monospace">CALL ${data.skew.callIV.toFixed(0)}%</div>
+      </div>
+      <div class="metric-explain">
+        <strong>决策逻辑：</strong>Put IV ${data.skew.skew > 5 ? '显著高于' : '略高于'} Call IV，
+        ${data.skew.skew > 8 ? '市场恐慌情绪浓厚，"低买 (Sell Put)" 年化极其丰厚！可把挂单价放到现价下方 8%，依然拿到超高年化。' : '市场情绪偏中性，正常配置即可。'}
+      </div>
+    </div>
+  `;
+}
+
+function renderModule2(data) {
+  const bbStatus = data.bb.squeeze ? 'danger' : data.bb.width < 6 ? 'warn' : 'safe';
+  const adxStatus = data.adx.value > 30 ? 'danger' : data.adx.value > 25 ? 'warn' : 'safe';
+
+  document.getElementById('module2').innerHTML = `
+    <div class="module-header">
+      <span class="module-num">M2</span>
+      <span class="module-title">市场状态与破位预警</span>
+      <span class="module-subtitle">防斩断指标</span>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">布林带宽度缩水率 (BB Width Squeeze)</span>
+        <span class="metric-badge badge-${bbStatus}">${data.bb.squeeze ? '⚠ 极度收敛' : data.bb.width < 6 ? '偏窄' : '正常'}</span>
+      </div>
+      <div class="metric-value-row">
+        <span class="metric-value" style="color:${data.bb.squeeze ? 'var(--red)' : data.bb.width < 6 ? 'var(--yellow)' : 'var(--green)'}">
+          ${data.bb.width.toFixed(2)}%
+        </span>
+        <span class="metric-sub">日线布林带宽度</span>
+      </div>
+      <div class="metric-bar">
+        <div class="metric-bar-fill" style="width:${Math.min(100, data.bb.width * 10)}%;background:${data.bb.squeeze ? 'var(--red)' : data.bb.width < 6 ? 'var(--yellow)' : 'var(--green)'}"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:6px 0;font-size:.65rem;font-family:'JetBrains Mono',monospace;color:var(--text-muted)">
+        <span>← 极度收窄 (危险)</span><span>正常范围 →</span>
+      </div>
+      <div class="metric-explain">
+        <strong>决策逻辑：</strong>${data.bb.squeeze
+          ? '🔴 布林带极度收敛！市场即将剧烈突破，绝对不要贪图高年化！退守5%年化或转入活期理财。'
+          : data.bb.width < 6
+          ? '🟡 布林带偏窄，需密切关注。建议降低年化目标至10-15%。'
+          : '🟢 布林带正常，波动空间充足，可正常追求目标年化。'}
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">平均趋向指数 (ADX)</span>
+        <span class="metric-badge badge-${adxStatus}">${data.adx.value > 30 ? '⚠ 强趋势' : data.adx.value > 25 ? '趋势渐起' : '震荡市'}</span>
+      </div>
+      <div class="metric-value-row">
+        <span class="metric-value" style="color:${data.adx.value > 30 ? 'var(--red)' : data.adx.value > 25 ? 'var(--yellow)' : 'var(--green)'}">
+          ${data.adx.value.toFixed(1)}
+        </span>
+        <span class="metric-sub">趋势：${data.adx.trend === 'rising' ? '上升中 ↑' : '平稳 →'}</span>
+      </div>
+      <div style="position:relative;height:40px;margin:10px 0">
+        <svg width="100%" height="40" viewBox="0 0 300 40">
+          <defs>
+            <linearGradient id="adxGrad" x1="0" x2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="50%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#ef4444"/></linearGradient>
+          </defs>
+          <rect x="0" y="15" width="300" height="10" rx="5" fill="#1e293b"/>
+          <rect x="0" y="15" width="${Math.min(300, data.adx.value * 6)}" height="10" rx="5" fill="url(#adxGrad)"/>
+          <line x1="150" y1="10" x2="150" y2="35" stroke="var(--yellow)" stroke-width="1" stroke-dasharray="2"/>
+          <text x="150" y="8" fill="var(--text-muted)" font-size="8" text-anchor="middle" font-family="JetBrains Mono">25</text>
+          <line x1="180" y1="10" x2="180" y2="35" stroke="var(--red)" stroke-width="1" stroke-dasharray="2"/>
+          <text x="180" y="8" fill="var(--text-muted)" font-size="8" text-anchor="middle" font-family="JetBrains Mono">30</text>
+          <circle cx="${Math.min(295, data.adx.value * 6)}" cy="20" r="6" fill="${data.adx.value > 30 ? 'var(--red)' : data.adx.value > 25 ? 'var(--yellow)' : 'var(--green)'}" stroke="white" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div style="display:flex;gap:12px;margin:8px 0">
+        <div class="calc-item" style="flex:1"><label>+DI</label><div class="val green mono">${data.adx.di_plus.toFixed(1)}</div></div>
+        <div class="calc-item" style="flex:1"><label>-DI</label><div class="val red mono">${data.adx.di_minus.toFixed(1)}</div></div>
+        <div class="calc-item" style="flex:1"><label>方向</label><div class="val mono" style="color:${data.adx.di_plus > data.adx.di_minus ? 'var(--green)' : 'var(--red)'}">${data.adx.di_plus > data.adx.di_minus ? '偏多' : '偏空'}</div></div>
+      </div>
+      <div class="metric-explain">
+        <strong>决策逻辑：</strong>${data.adx.value < 25
+          ? '🟢 ADX < 25，确认震荡市！双币赢印钞机模式，可大胆追求 15-20% 年化。'
+          : data.adx.value < 30
+          ? '🟡 ADX 处于过渡区间，趋势可能正在形成。建议降低年化至 10-15%，提高安全距离。'
+          : '🔴 ADX > 30，趋势已确立！双币赢极易被单边击穿，必须切换到高防御模式或暂停购买。'}
+      </div>
+    </div>
+  `;
+}
+
+function renderModule3(data) {
+  const fractals = data.fractals;
+  fractals.resistances.forEach(r => r.pct = ((r.price - data.price) / data.price * 100));
+  fractals.supports.forEach(s => s.pct = ((s.price - data.price) / data.price * 100));
+
+  document.getElementById('module3').innerHTML = `
+    <div class="module-header">
+      <span class="module-num">M3</span>
+      <span class="module-title">安全边际计算器</span>
+      <span class="module-subtitle">动态点位指标</span>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">日均真实波动幅度 (ATR-14)</span>
+        <span class="metric-badge badge-safe">安全距离已计算</span>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-item">
+          <label>ATR 绝对值</label>
+          <div class="val cyan mono">$${fmt(data.atr.value)}</div>
+        </div>
+        <div class="calc-item">
+          <label>ATR 百分比</label>
+          <div class="val cyan mono">${fmtP(data.atr.pct)}</div>
+        </div>
+        <div class="calc-item">
+          <label>安全距离 (1.5x ATR)</label>
+          <div class="val green mono">${fmtP(data.atr.safe15x)}</div>
+        </div>
+        <div class="calc-item">
+          <label>安全执行价区间</label>
+          <div class="val yellow mono">$${fmt(data.price * (1 - data.atr.safe15x/100))} - $${fmt(data.price * (1 + data.atr.safe15x/100))}</div>
+        </div>
+      </div>
+      <div class="metric-explain">
+        <strong>核心规则：</strong>24h/48h 执行价至少放在 <strong>1.5倍 ATR (${fmtP(data.atr.safe15x)})</strong> 之外。
+        如果年化 20% 的产品执行价仅离现价 ${fmtP(data.atr.pct * 0.5)}，那就是送死！
+        当前安全低买价不高于 <strong>$${fmt(data.price * (1 - data.atr.safe15x/100))}</strong>，
+        安全高卖价不低于 <strong>$${fmt(data.price * (1 + data.atr.safe15x/100))}</strong>。
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">多周期分形支撑/阻力线 (Fractal Levels)</span>
+      </div>
+
+      <div style="margin-bottom:8px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▲ 阻力位（高卖执行价必须在这些之上）</div>
+      ${fractals.resistances.map(r => `
+        <div class="level-line">
+          <div class="level-dot" style="background:var(--red)"></div>
+          <span class="level-label">${r.tf} 阻力</span>
+          <span class="level-price" style="color:var(--red)">$${fmt(r.price)}</span>
+          <span class="level-pct">+${r.pct.toFixed(2)}%</span>
+        </div>
+      `).join('')}
+
+      <div style="margin:12px 0;padding:8px 12px;background:linear-gradient(90deg,transparent,var(--cyan-glow),transparent);border-radius:4px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:.85rem">
+        ● 现价 $${fmt(data.price)}
+      </div>
+
+      ${fractals.supports.map(s => `
+        <div class="level-line">
+          <div class="level-dot" style="background:var(--green)"></div>
+          <span class="level-label">${s.tf} 支撑</span>
+          <span class="level-price" style="color:var(--green)">$${fmt(s.price)}</span>
+          <span class="level-pct">${s.pct.toFixed(2)}%</span>
+        </div>
+      `).join('')}
+
+      <div style="margin-top:4px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▼ 支撑位（低买执行价必须在这些之下）</div>
+
+      <div class="metric-explain" style="margin-top:12px">
+        <strong>决策逻辑：</strong>选择双币赢执行价时，必须在分形关键位的外侧。
+        低买建议选在 <strong>${fractals.supports[1].tf} 支撑 $${fmt(fractals.supports[1].price)}</strong> 下方；
+        高卖建议选在 <strong>${fractals.resistances[1].tf} 阻力 $${fmt(fractals.resistances[1].price)}</strong> 上方。
+      </div>
+    </div>
+  `;
+}
+
+function renderModule4(data) {
+  const liqZones = data.liqZones;
+  const maxVol = Math.max(...liqZones.map(z => z.volume));
+  const events = data.events;
+  const now = Date.now();
+
+  const liqBarsHTML = liqZones.map((z, i) => {
+    const left = (i / liqZones.length) * 100;
+    const height = (z.volume / maxVol) * 100;
+    const color = z.side === 'long' ? 'var(--green)' : 'var(--red)';
+    return `<div class="heatmap-bar" style="left:${left}%;width:${100/liqZones.length - 1}%;height:${height}%;background:${color}"></div>`;
+  }).join('');
+
+  // Find where current price falls in the range
+  const minP = Math.min(...liqZones.map(z => z.price));
+  const maxP = Math.max(...liqZones.map(z => z.price));
+  const pricePos = ((data.price - minP) / (maxP - minP)) * 100;
+
+  const eventsHTML = events.map(e => {
+    const diff = e.date.getTime() - now;
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(hours / 24);
+    const remH = hours % 24;
+    const isUrgent = hours < 24;
+    const countdown = days > 0 ? `${days}天${remH}小时` : `${hours}小时`;
+    return `
+      <div class="event-item">
+        <div class="event-icon ${e.icon}">${e.icon === 'fed' ? '🏦' : e.icon === 'cpi' ? '📊' : e.icon === 'nfp' ? '👷' : '🔓'}</div>
+        <div class="event-info">
+          <div class="event-name">${e.name}</div>
+          <div class="event-date">${e.date.toLocaleDateString('zh-CN', {month:'short',day:'numeric'})} ${e.date.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+        <div class="event-countdown ${isUrgent ? 'urgent' : 'normal'}">${isUrgent ? '⚠ ' : ''}${countdown}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Find major liquidation cluster
+  const longLiqs = liqZones.filter(z => z.side === 'long').sort((a,b) => b.volume - a.volume);
+  const shortLiqs = liqZones.filter(z => z.side === 'short').sort((a,b) => b.volume - a.volume);
+  const majorLongCluster = longLiqs[0];
+  const majorShortCluster = shortLiqs[0];
+
+  document.getElementById('module4').innerHTML = `
+    <div class="module-header">
+      <span class="module-num">M4</span>
+      <span class="module-title">微观结构与事件驱动</span>
+      <span class="module-subtitle">扫雷指标</span>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">清算热力图 (Liquidation Heatmap)</span>
+        <span class="metric-badge badge-warn">模拟数据</span>
+      </div>
+      <div class="heatmap">
+        ${liqBarsHTML}
+        <div class="heatmap-marker" style="left:${pricePos}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.65rem;font-family:'JetBrains Mono',monospace;color:var(--text-muted);margin-bottom:10px">
+        <span>$${fmt(minP)}</span>
+        <span style="color:var(--green)">■ 多头清算</span>
+        <span style="color:var(--red)">■ 空头清算</span>
+        <span>$${fmt(maxP)}</span>
+      </div>
+      ${majorLongCluster ? `
+      <div class="level-line">
+        <div class="level-dot" style="background:var(--green)"></div>
+        <span class="level-label">最大多头清算簇</span>
+        <span class="level-price" style="color:var(--green)">$${fmt(majorLongCluster.price)}</span>
+        <span class="level-pct">${((majorLongCluster.price - data.price) / data.price * 100).toFixed(2)}%</span>
+      </div>` : ''}
+      ${majorShortCluster ? `
+      <div class="level-line">
+        <div class="level-dot" style="background:var(--red)"></div>
+        <span class="level-label">最大空头清算簇</span>
+        <span class="level-price" style="color:var(--red)">$${fmt(majorShortCluster.price)}</span>
+        <span class="level-pct">${((majorShortCluster.price - data.price) / data.price * 100).toFixed(2)}%</span>
+      </div>` : ''}
+      <div class="metric-explain">
+        <strong>决策逻辑：</strong>做市商喜欢"扫损"。你的"低买"执行价必须放在多头爆仓区间的下方，去接带血的筹码。
+        ${majorLongCluster ? `当前最大多头清算簇在 $${fmt(majorLongCluster.price)}，低买执行价应低于此位置。` : ''}
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-name">宏观经济与代币解锁倒计时</span>
+        <span class="metric-badge badge-${events.some(e => (e.date.getTime() - now) < 86400000) ? 'danger' : 'safe'}">
+          ${events.some(e => (e.date.getTime() - now) < 86400000) ? '⚠ 24h内有事件' : '近期安全'}
+        </span>
+      </div>
+      ${eventsHTML}
+      <div class="metric-explain">
+        <strong>决策逻辑：</strong>重大数据公布前 24 小时内，直接将策略降级到最保守的 5-10% 年化。
+        事件驱动的瞬间振幅往往超过 5%，双币赢极易被击穿。
+      </div>
+    </div>
+  `;
+}
+
+// ─── Draw IV/RV History Chart ───
+function drawIVRVChart(iv, rv) {
+  const canvas = document.getElementById('ivrvChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.offsetWidth * 2;
+  const H = canvas.height = 160;
+  ctx.scale(1, 1);
+
+  // Generate history
+  const pts = 30;
+  const ivHist = [], rvHist = [];
+  let ivV = iv - 5 + Math.random() * 10, rvV = rv - 3 + Math.random() * 6;
+  for (let i = 0; i < pts; i++) {
+    ivV += (Math.random() - 0.5) * 3;
+    rvV += (Math.random() - 0.5) * 2;
+    ivHist.push(Math.max(10, ivV));
+    rvHist.push(Math.max(10, rvV));
+  }
+  ivHist.push(iv);
+  rvHist.push(rv);
+
+  const all = [...ivHist, ...rvHist];
+  const minV = Math.min(...all) - 5;
+  const maxV = Math.max(...all) + 5;
+
+  function drawLine(data, color, dash) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    if (dash) ctx.setLineDash(dash);
+    else ctx.setLineDash([]);
+    data.forEach((v, i) => {
+      const x = (i / (data.length - 1)) * W;
+      const y = H - ((v - minV) / (maxV - minV)) * H;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // Fill spread area
+  ctx.beginPath();
+  for (let i = 0; i <= pts; i++) {
+    const x = (i / pts) * W;
+    const y = H - ((ivHist[i] - minV) / (maxV - minV)) * H;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  for (let i = pts; i >= 0; i--) {
+    const x = (i / pts) * W;
+    const y = H - ((rvHist[i] - minV) / (maxV - minV)) * H;
+    ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = iv > rv ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)';
+  ctx.fill();
+
+  drawLine(ivHist, '#a855f7');
+  drawLine(rvHist, '#06b6d4', [4, 4]);
+
+  // Labels
+  ctx.font = '18px JetBrains Mono';
+  ctx.fillStyle = '#a855f7';
+  ctx.fillText('IV', W - 60, H - ((iv - minV) / (maxV - minV)) * H - 4);
+  ctx.fillStyle = '#06b6d4';
+  ctx.fillText('RV', W - 30, H - ((rv - minV) / (maxV - minV)) * H - 4);
+}
+
+// ─── Reasons Panel ───
+function renderReasons(decision) {
+  const trafficEl = document.getElementById('trafficLight');
+  const existingRec = trafficEl.querySelector('.rec-box');
+  if (existingRec) existingRec.remove();
+
+  const recHTML = `
+    <div class="rec-box ${decision.signal}" style="margin:0 0 0 0;flex:0 0 320px">
+      <div class="rec-title"><span class="pulse-dot ${decision.signal}"></span> 决策因子明细</div>
+      <div class="rec-body">
+        ${decision.reasons.map(r => `• ${r}<br>`).join('')}
+      </div>
+    </div>
+  `;
+  trafficEl.insertAdjacentHTML('beforeend', recHTML);
+}
+
+// ─── Main Refresh ───
+async function refreshData() {
+  document.querySelector('.refresh-btn').textContent = '⟳ 刷新中...';
+
+  const raw = await fetchDashboardData();
+  if (!raw) {
+    document.querySelector('.refresh-btn').textContent = '⟳ 刷新失败';
+    return;
+  }
+
+  const { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, events } = transformData(raw);
+  const data = { price, iv, rv, skew, bb, adx, atr, fractals, liqZones, events };
+
+  // 使用后端计算的决策（更准确），回退到前端计算
+  const decision = raw.decision || computeDecision(data);
+
+  // Update header
+  document.getElementById('btcPrice').textContent = `$${fmt(price)}`;
+  const changeEl = document.getElementById('btcChange');
+  changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+  changeEl.className = `change ${change >= 0 ? 'up' : 'down'}`;
+
+  // 显示数据新鲜度
+  const meta = raw.meta;
+  const age = meta ? `${meta.ageSeconds || Math.round((Date.now() - new Date(meta.lastRefresh).getTime()) / 1000)}s 前更新` : '';
+  document.getElementById('timestamp').textContent =
+    new Date().toLocaleString('zh-CN', { hour12: false }) + (age ? ` · 数据${age}` : '');
+
+  renderTrafficLight(decision, data);
+  renderReasons(decision);
+  renderModule1(data);
+  renderModule2(data);
+  renderModule3(data);
+  renderModule4(data);
+
+  setTimeout(() => drawIVRVChart(iv, rv), 100);
+  document.querySelector('.refresh-btn').textContent = '⟳ 刷新数据';
+}
+
+// 手动触发后端重新拉取
+async function forceRefresh() {
+  document.querySelector('.refresh-btn').textContent = '⟳ 强制刷新...';
+  try {
+    await fetch(`${API_BASE}/api/refresh`, { method: 'POST' });
+  } catch(e) {}
+  await refreshData();
+}
+
+// Init
+refreshData();
+// 前端每 60 秒从后端读一次缓存（后端每 5 分钟拉取新数据）
+setInterval(refreshData, 60000);
+</script>
+</body>
+</html>

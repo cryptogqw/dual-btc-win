@@ -1,0 +1,18 @@
+{
+  "name": "btc-dual-win-terminal",
+  "version": "1.0.0",
+  "description": "BTC 双币赢决策终端 - 轻量后端",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
