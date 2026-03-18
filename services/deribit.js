@@ -112,6 +112,97 @@ function calcVolSkew(options, indexPrice) {
   };
 }
 
+// ─── 计算期权最大痛点 (Max Pain) ───
+function calcMaxPain(options, indexPrice) {
+  // 找到本周五到期的期权
+  const now = new Date();
+  const dayOfWeek = now.getUTCDay();
+  const daysToFriday = (5 - dayOfWeek + 7) % 7 || 7;
+  const nextFriday = new Date(now.getTime() + daysToFriday * 86400000);
+  const fridayStr = nextFriday.toISOString().slice(0, 10);
+
+  // Deribit 到期日格式: BTC-28MAR25-85000-C → 提取日期部分
+  const monthMap = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',
+    JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+
+  function parseExpiry(name) {
+    const parts = name.split('-');
+    if (parts.length < 4) return null;
+    const dateStr = parts[1]; // e.g. "28MAR25"
+    const day = dateStr.slice(0, dateStr.search(/[A-Z]/));
+    const mon = dateStr.replace(/[0-9]/g, '');
+    const yr = dateStr.slice(-2);
+    if (!monthMap[mon]) return null;
+    return `20${yr}-${monthMap[mon]}-${day.padStart(2, '0')}`;
+  }
+
+  // 按到期日分组，选最近到期的一组
+  const byExpiry = {};
+  for (const o of options) {
+    if (!o.instrument_name || !o.open_interest) continue;
+    const expiry = parseExpiry(o.instrument_name);
+    if (!expiry) continue;
+    if (!byExpiry[expiry]) byExpiry[expiry] = [];
+    byExpiry[expiry].push(o);
+  }
+
+  // 选最近的周五或最近的到期日
+  const expiries = Object.keys(byExpiry).sort();
+  const futureExpiries = expiries.filter(e => e >= now.toISOString().slice(0, 10));
+  if (futureExpiries.length === 0) return null;
+
+  // 优先选7天内到期的
+  const target = futureExpiries.find(e => {
+    const diff = (new Date(e + 'T08:00:00Z').getTime() - now.getTime()) / 86400000;
+    return diff <= 7 && diff >= 0;
+  }) || futureExpiries[0];
+
+  const targetOptions = byExpiry[target];
+  if (!targetOptions || targetOptions.length < 4) return null;
+
+  // 提取 strikes
+  const strikes = new Set();
+  for (const o of targetOptions) {
+    const parts = o.instrument_name.split('-');
+    strikes.add(parseFloat(parts[2]));
+  }
+  const sortedStrikes = [...strikes].sort((a, b) => a - b);
+
+  // 计算每个 strike 作为结算价时的总痛值
+  let minPain = Infinity, maxPainStrike = 0;
+
+  for (const settlePrice of sortedStrikes) {
+    let totalPain = 0;
+    for (const o of targetOptions) {
+      const parts = o.instrument_name.split('-');
+      const strike = parseFloat(parts[2]);
+      const type = parts[3]; // C or P
+      const oi = o.open_interest || 0;
+
+      if (type === 'C') {
+        totalPain += Math.max(0, settlePrice - strike) * oi;
+      } else {
+        totalPain += Math.max(0, strike - settlePrice) * oi;
+      }
+    }
+    if (totalPain < minPain) {
+      minPain = totalPain;
+      maxPainStrike = settlePrice;
+    }
+  }
+
+  const distFromCurrent = ((maxPainStrike - indexPrice) / indexPrice) * 100;
+
+  return {
+    strike: maxPainStrike,
+    expiry: target,
+    distPct: Math.round(distFromCurrent * 100) / 100,
+    direction: maxPainStrike > indexPrice ? 'above' : 'below',
+    totalOI: targetOptions.reduce((s, o) => s + (o.open_interest || 0), 0),
+    optionCount: targetOptions.length,
+  };
+}
+
 // ─── 整合拉取 ───
 async function fetchAll() {
   console.log('[Deribit] 拉取波动率数据 (公开API, 无需账号)...');
@@ -124,12 +215,18 @@ async function fetchAll() {
 
   const iv = calcATMIV(options, indexPrice);
   const skew = calcVolSkew(options, indexPrice);
+  const maxPain = calcMaxPain(options, indexPrice);
+
+  if (maxPain) {
+    console.log(`  ✓ Max Pain: $${maxPain.strike.toLocaleString()} (${maxPain.expiry}, 距现价 ${maxPain.distPct}%)`);
+  }
 
   return {
     iv,
     rv: rvData.rv,
     ivRvSpread: Math.round((iv - rvData.rv) * 100) / 100,
     skew,
+    maxPain,
     rvHistory: rvData.history,
     optionCount: options.length,
     indexPrice,
