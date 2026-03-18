@@ -166,21 +166,24 @@ function computeDecision() {
   }
 
   // 生成建议
-  let signal, advice;
+  let signal, level, advice;
   const safeDist = b.technicals.atr.safe15x;
 
   if (score >= 3) {
     signal = 'green';
+    level = '🟢 绿灯';
     advice = `建议选择距离现价 ${safeDist}% 以外、年化 15-20% 区间的产品，优先执行分形低点外侧的"低买"。`;
   } else if (score >= -1) {
     signal = 'yellow';
+    level = '🟡 黄灯';
     advice = `谨慎操作，建议年化降至 10-15%，执行价放远至 ${(safeDist * 1.3).toFixed(1)}% 以外。`;
   } else {
     signal = 'red';
+    level = '🔴 红灯';
     advice = '今日暂停购买双币赢！资金保留在法币账户或稳定币活期理财赚取利息。';
   }
 
-  return { signal, score, reasons, advice };
+  return { signal, level, score, reasons, advice };
 }
 
 // ─── API 路由 ───
