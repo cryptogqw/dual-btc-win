@@ -71,6 +71,7 @@ background:linear-gradient(90deg,#fff 60%,var(--cyan));-webkit-background-clip:t
 .m2 .module-num{background:var(--red-glow);color:var(--red)}
 .m3 .module-num{background:var(--blue-glow);color:var(--blue)}
 .m4 .module-num{background:var(--yellow-glow);color:var(--yellow)}
+.m5 .module-num{background:#f9731640;color:var(--orange)}
 .module-title{font-size:.95rem;font-weight:700;letter-spacing:.5px}
 .module-subtitle{font-size:.7rem;color:var(--text-muted);margin-left:auto;font-family:'JetBrains Mono',monospace}
 
@@ -178,6 +179,7 @@ html{font-size:13px}
 .btc-price .price{font-size:1.5rem}
 .module{padding:16px}
 .calc-item .val{font-size:1rem}
+#module5 > div:last-child{grid-template-columns:1fr 1fr!important}
 }
 
 /* ═══ Responsive: Mobile (≤600px) ═══ */
@@ -253,6 +255,9 @@ html{font-size:12px}
 
 /* Put/Call skew bar text */
 .metric-card div[style*="flex:"] {font-size:.6rem!important}
+
+/* M5 MSTR module stacks on mobile */
+#module5 > div:last-child{grid-template-columns:1fr!important}
 }
 
 /* ═══ Responsive: Small Mobile (≤380px) ═══ */
@@ -317,6 +322,8 @@ html{font-size:11px}
   <div class="module m3" id="module3"></div>
   <!-- Module 4 -->
   <div class="module m4" id="module4"></div>
+  <!-- Module 5: MSTR -->
+  <div class="module m5" id="module5" style="grid-column:1/-1"></div>
 </div>
 
 <script>
@@ -362,6 +369,7 @@ function transformData(raw) {
 
   // 清算数据
   const liqZones = raw.liquidation?.zones || raw.liquidation?.data || [];
+  const liqSource = raw.liquidation?.source || 'unknown';
 
   // 宏观事件 → 转换日期对象
   const events = (raw.macro?.events || []).map(e => ({
@@ -369,7 +377,7 @@ function transformData(raw) {
     date: new Date(e.date),
   }));
 
-  return { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, events };
+  return { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr: raw.mstr || null };
 }
 
 // ─── Decision Logic ───
@@ -490,16 +498,16 @@ function renderModule1(data) {
         <span class="metric-badge badge-${skewStatus}">${data.skew.skew > 8 ? 'Put偏度高' : data.skew.skew > 3 ? '轻微偏空' : '均衡'}</span>
       </div>
       <div class="metric-value-row">
-        <span class="metric-value">${data.skew.skew > 0 ? '+' : ''}${data.skew.skew.toFixed(1)}%</span>
-        <span class="metric-sub">Put ${data.skew.putIV.toFixed(1)}% / Call ${data.skew.callIV.toFixed(1)}%</span>
+        <span class="metric-value">${data.skew.skew > 0 ? '+' : ''}${data.skew.skew.toFixed(2)}%</span>
+        <span class="metric-sub">Put ${data.skew.putIV.toFixed(2)}% / Call ${data.skew.callIV.toFixed(2)}%</span>
       </div>
       <div style="display:flex;gap:8px;margin:8px 0">
         <div style="flex:${data.skew.putIV};height:24px;background:linear-gradient(90deg,var(--red),var(--red-glow));border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-family:'JetBrains Mono',monospace">PUT ${data.skew.putIV.toFixed(0)}%</div>
         <div style="flex:${data.skew.callIV};height:24px;background:linear-gradient(90deg,var(--green-glow),var(--green));border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-family:'JetBrains Mono',monospace">CALL ${data.skew.callIV.toFixed(0)}%</div>
       </div>
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>Put IV ${data.skew.skew > 5 ? '显著高于' : '略高于'} Call IV，
-        ${data.skew.skew > 8 ? '市场恐慌情绪浓厚，"低买 (Sell Put)" 年化极其丰厚！可把挂单价放到现价下方 8%，依然拿到超高年化。' : '市场情绪偏中性，正常配置即可。'}
+        <strong>决策逻辑：</strong>${data.skew.skew > 5 ? 'Put IV 显著高于 Call IV，' : Math.abs(data.skew.skew) < 1 ? 'Put IV 与 Call IV 基本持平 (偏度仅 ' + data.skew.skew.toFixed(2) + '%)，' : 'Put IV 略高于 Call IV，'}
+        ${data.skew.skew > 8 ? '市场恐慌情绪浓厚，"低买 (Sell Put)" 年化极其丰厚！可把挂单价放到现价下方 8%，依然拿到超高年化。' : Math.abs(data.skew.skew) < 1 ? '市场情绪完全中性，多空均衡，正常配置即可。' : '市场情绪偏中性，正常配置即可。'}
       </div>
     </div>
   `;
@@ -629,6 +637,7 @@ function renderModule3(data) {
     <div class="metric-card">
       <div class="metric-top">
         <span class="metric-name">多周期分形支撑/阻力线 (Fractal Levels)</span>
+        <span class="metric-badge badge-safe">基于日线K线</span>
       </div>
 
       <div style="margin-bottom:8px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▲ 阻力位（高卖执行价必须在这些之上）</div>
@@ -735,7 +744,7 @@ function renderModule4(data) {
     <div class="metric-card">
       <div class="metric-top">
         <span class="metric-name">清算热力图 (Liquidation Heatmap)</span>
-        <span class="metric-badge badge-warn">模拟数据</span>
+        <span class="metric-badge badge-warn">72h 窗口 · ${data.liqSource === 'coinglass' ? 'Coinglass' : '基于持仓估算'}</span>
       </div>
       <div class="heatmap">
         ${liqBarsHTML}
@@ -770,14 +779,177 @@ function renderModule4(data) {
     <div class="metric-card">
       <div class="metric-top">
         <span class="metric-name">宏观经济与代币解锁倒计时</span>
-        <span class="metric-badge badge-${events.some(e => (e.date.getTime() - now) < 86400000) ? 'danger' : 'safe'}">
-          ${events.some(e => (e.date.getTime() - now) < 86400000) ? '⚠ 24h内有事件' : '近期安全'}
+        <span class="metric-badge badge-${events.some(e => e.isUrgent || ((e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime()) - now) < 86400000) ? 'danger' : 'safe'}">
+          ${events.some(e => e.isUrgent || ((e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime()) - now) < 86400000) ? '⚠ 24h内有事件' : '近期安全'}
         </span>
       </div>
       ${eventsHTML}
       <div class="metric-explain">
         <strong>决策逻辑：</strong>重大数据公布前 24 小时内，直接将策略降级到最保守的 5-10% 年化。
         事件驱动的瞬间振幅往往超过 5%，双币赢极易被击穿。
+      </div>
+    </div>
+  `;
+}
+
+// ─── Module 5: MSTR Tracking ───
+function renderModule5(data) {
+  const m = data.mstr;
+  const el = document.getElementById('module5');
+
+  if (!m) {
+    el.innerHTML = `
+      <div class="module-header">
+        <span class="module-num">M5</span>
+        <span class="module-title">MSTR (Strategy) 追踪</span>
+        <span class="module-subtitle">BTC巨鲸信号</span>
+      </div>
+      <div class="metric-card">
+        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.85rem">
+          MSTR 数据加载中... 需要在 Railway Variables 中设置 <strong>FINNHUB_API_KEY</strong> 以获取股价和 NAV 数据
+        </div>
+      </div>`;
+    return;
+  }
+
+  const h = m.holdings || {};
+  const lp = m.lastPurchase || {};
+  const nav = m.navPremium;
+  const offering = m.latestOffering;
+  const stock = m.stock;
+  const signals = m.signals || [];
+  const filings = m.secFilings || [];
+
+  // NAV status
+  let navColor = 'var(--green)', navStatus = 'safe', navLabel = '正常';
+  if (nav) {
+    if (nav.multiple > 2.0) { navColor = 'var(--red)'; navStatus = 'danger'; navLabel = '极度 FOMO'; }
+    else if (nav.multiple > 1.5) { navColor = 'var(--yellow)'; navStatus = 'warn'; navLabel = '偏热'; }
+    else if (nav.multiple < 1.0) { navColor = 'var(--cyan)'; navStatus = 'safe'; navLabel = '折价'; }
+  }
+
+  // Signals HTML
+  const signalsHTML = signals.map(s => {
+    const c = s.type === 'danger' ? 'var(--red)' : s.type === 'warn' ? 'var(--yellow)' : 'var(--green)';
+    const icon = s.type === 'danger' ? '🔴' : s.type === 'warn' ? '🟡' : '🟢';
+    return `<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:${c}10;border-left:3px solid ${c};font-size:.78rem;color:var(--text-secondary)">${icon} ${s.msg}</div>`;
+  }).join('');
+
+  // SEC filings HTML
+  const filingsHTML = filings.length > 0 ? filings.slice(0, 3).map(f =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--bg-card-alt);font-size:.75rem">
+      <span style="background:var(--purple-glow);color:var(--purple);padding:2px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:.65rem">${f.form}</span>
+      <span style="flex:1;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.title || 'SEC Filing'}</span>
+      <span style="color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:.65rem">${f.date ? new Date(f.date).toLocaleDateString('zh-CN',{month:'short',day:'numeric'}) : ''}</span>
+    </div>`
+  ).join('') : '<div style="font-size:.75rem;color:var(--text-muted);padding:4px 10px">近90天内无关键融资相关文件</div>';
+
+  el.innerHTML = `
+    <div class="module-header">
+      <span class="module-num">M5</span>
+      <span class="module-title">MSTR (Strategy) 追踪</span>
+      <span class="module-subtitle">BTC巨鲸信号 · ${h.source === 'bitbo_live' ? '实时' : '缓存'}数据</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <!-- 左: 持仓 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">BTC 持仓总量</span>
+        </div>
+        <div class="metric-value-row">
+          <span class="metric-value" style="color:var(--orange)">${h.totalBTC ? h.totalBTC.toLocaleString() : 'N/A'}</span>
+          <span class="metric-sub">BTC</span>
+        </div>
+        <div class="calc-grid" style="grid-template-columns:1fr 1fr;margin-top:8px">
+          <div class="calc-item"><label>平均成本</label><div class="val cyan mono">$${h.avgCostPerBTC ? fmt(h.avgCostPerBTC) : 'N/A'}</div></div>
+          <div class="calc-item"><label>总投入</label><div class="val mono" style="color:var(--text-secondary)">$${h.totalCostUSD ? (h.totalCostUSD / 1e9).toFixed(1) + 'B' : 'N/A'}</div></div>
+          <div class="calc-item"><label>未实现盈亏</label><div class="val mono" style="color:${h.unrealizedPnL > 0 ? 'var(--green)' : 'var(--red)'}">${h.unrealizedPnL ? (h.unrealizedPnL > 0 ? '+' : '') + '$' + (Math.abs(h.unrealizedPnL) / 1e9).toFixed(2) + 'B' : 'N/A'}</div></div>
+          <div class="calc-item"><label>数据更新</label><div class="val mono" style="color:var(--text-muted);font-size:.8rem">${h.holdingsLastUpdate || 'N/A'}</div></div>
+        </div>
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg-card-alt);border-radius:6px;border-left:3px solid var(--orange)">
+          <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:4px">最近一次购买</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span class="mono" style="font-size:1rem;font-weight:700;color:var(--orange)">${lp.btcAmount ? lp.btcAmount.toLocaleString() + ' BTC' : 'N/A'}</span>
+            <span class="mono" style="font-size:.75rem;color:var(--text-muted)">${lp.date || ''}</span>
+          </div>
+          <div style="font-size:.7rem;color:var(--text-secondary);margin-top:2px">
+            ${lp.avgPrice ? '均价 $' + fmt(lp.avgPrice) + ' · 总计 $' + (lp.totalCost / 1e6).toFixed(1) + 'M' : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- 中: NAV Premium -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">NAV 溢价率 (华尔街情绪温度计)</span>
+          <span class="metric-badge badge-${navStatus}">${navLabel}</span>
+        </div>
+        ${nav ? `
+        <div class="metric-value-row">
+          <span class="metric-value" style="color:${navColor}">${nav.multiple}x</span>
+          <span class="metric-sub">${nav.premium > 0 ? '+' : ''}${nav.premium}% 溢价</span>
+        </div>
+        <div style="position:relative;height:50px;margin:10px 0">
+          <svg width="100%" height="50" viewBox="0 0 300 50">
+            <defs>
+              <linearGradient id="navGrad" x1="0" x2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="33%" stop-color="#10b981"/><stop offset="66%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#ef4444"/></linearGradient>
+            </defs>
+            <rect x="10" y="18" width="280" height="10" rx="5" fill="#1e293b"/>
+            <rect x="10" y="18" width="${Math.min(280, Math.max(10, (nav.multiple / 3) * 280))}" height="10" rx="5" fill="url(#navGrad)"/>
+            <!-- markers -->
+            <line x1="${10 + 280/3}" y1="13" x2="${10 + 280/3}" y2="33" stroke="var(--yellow)" stroke-width="1" stroke-dasharray="2"/>
+            <text x="${10 + 280/3}" y="10" fill="var(--text-muted)" font-size="8" text-anchor="middle" font-family="JetBrains Mono">1.0x</text>
+            <line x1="${10 + 280*2/3}" y1="13" x2="${10 + 280*2/3}" y2="33" stroke="var(--red)" stroke-width="1" stroke-dasharray="2"/>
+            <text x="${10 + 280*2/3}" y="10" fill="var(--text-muted)" font-size="8" text-anchor="middle" font-family="JetBrains Mono">2.0x</text>
+            <circle cx="${10 + Math.min(280, Math.max(0, (nav.multiple / 3) * 280))}" cy="23" r="6" fill="${navColor}" stroke="white" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="calc-grid" style="grid-template-columns:1fr 1fr">
+          <div class="calc-item"><label>MSTR 市值</label><div class="val mono" style="color:var(--text-secondary)">$${(nav.marketCap / 1e9).toFixed(1)}B</div></div>
+          <div class="calc-item"><label>BTC 持仓价值</label><div class="val cyan mono">$${(nav.btcValue / 1e9).toFixed(1)}B</div></div>
+        </div>
+        ` : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">需要 FINNHUB_API_KEY 计算 NAV</div>'}
+        ${stock ? `
+        <div style="display:flex;gap:8px;margin-top:8px;padding:8px 12px;background:var(--bg-card-alt);border-radius:6px;align-items:center">
+          <span style="font-size:.75rem;color:var(--text-muted)">MSTR</span>
+          <span class="mono" style="font-size:1rem;font-weight:700">$${stock.price?.toFixed(2) || 'N/A'}</span>
+          <span class="mono" style="font-size:.8rem;color:${stock.change >= 0 ? 'var(--green)' : 'var(--red)'}">${stock.change >= 0 ? '+' : ''}${stock.change?.toFixed(2) || 0}%</span>
+        </div>` : ''}
+        <div class="metric-explain" style="margin-top:10px">
+          <strong>决策逻辑：</strong>${nav && nav.multiple > 2.0
+            ? '🔴 NAV > 2.0x，华尔街极度 FOMO！BTC 随时可能因获利回吐而回调，避免做高卖 (Sell Call)，全面转向低买。'
+            : nav && nav.multiple > 1.5
+            ? '🟡 NAV 溢价偏热，注意可能的情绪拐点。'
+            : nav && nav.multiple < 1.0
+            ? '🟢 MSTR 折价交易，市场悲观情绪见底信号，可能是抄底机会。'
+            : '🟢 NAV 溢价合理，情绪平稳。'}
+        </div>
+      </div>
+
+      <!-- 右: 融资 & SEC & 信号 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">融资公告 & SEC 监控</span>
+          <span class="metric-badge badge-${offering && offering.isActive ? 'warn' : 'safe'}">${offering && offering.isActive ? '正在执行' : '无活跃融资'}</span>
+        </div>
+        ${offering ? `
+        <div style="padding:10px 12px;background:${offering.isActive ? 'var(--yellow-bg)' : 'var(--bg-card-alt)'};border-radius:6px;border-left:3px solid ${offering.isActive ? 'var(--yellow)' : 'var(--border)'};margin-bottom:10px">
+          <div style="font-size:.8rem;font-weight:600;color:${offering.isActive ? 'var(--yellow)' : 'var(--text-secondary)'}">${offering.type}</div>
+          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">${offering.amount} · ${offering.purpose}</div>
+          <div style="font-size:.65rem;color:var(--text-muted);margin-top:4px">${offering.note || ''} · ${offering.date}</div>
+        </div>
+        <div class="metric-explain" style="margin-bottom:10px">
+          <strong>⚠ 融资信号：</strong>MSTR 正在执行大规模融资用于购买 BTC，预期未来 1-2 周内有持续现货买盘。
+          此时做"高卖 (Sell Call)"极其危险，应全面转向"低买 (Sell Put)"。
+        </div>` : ''}
+
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:6px;font-weight:600">近期 SEC 文件</div>
+        ${filingsHTML}
+
+        ${signals.length > 0 ? `
+        <div style="font-size:.75rem;color:var(--text-muted);margin:10px 0 6px;font-weight:600">综合信号</div>
+        ${signalsHTML}` : ''}
       </div>
     </div>
   `;
@@ -930,8 +1102,8 @@ async function refreshData() {
     return;
   }
 
-  const { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, events } = transformData(raw);
-  const data = { price, iv, rv, skew, bb, adx, atr, fractals, liqZones, events };
+  const { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr } = transformData(raw);
+  const data = { price, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr };
 
   // 使用后端计算的决策（更准确），回退到前端计算
   const decision = raw.decision || computeDecision(data);
@@ -954,6 +1126,7 @@ async function refreshData() {
   renderModule2(data);
   renderModule3(data);
   renderModule4(data);
+  renderModule5(data);
 
   setTimeout(() => drawIVRVChart(iv, rv), 100);
   document.querySelector('.refresh-btn').textContent = '⟳ 刷新数据';
