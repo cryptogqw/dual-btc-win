@@ -22,6 +22,7 @@ const binance = require('./services/binance');
 const deribit = require('./services/deribit');
 const coinglass = require('./services/coinglass');
 const macro = require('./services/macro');
+const mstr = require('./services/mstr');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -81,7 +82,18 @@ async function fetchAndCache() {
     console.error(`  ✗ 宏观事件失败:`, err.message);
   }
 
-  // 5. 计算综合决策
+  // 5. MSTR 指标
+  try {
+    const binanceCache = cache.get('binance');
+    const btcPrice = binanceCache?.price?.price || 84000;
+    const mstrData = await mstr.fetchAll(btcPrice);
+    cache.set('mstr', mstrData);
+  } catch (err) {
+    errors.push(`MSTR: ${err.message}`);
+    console.error(`  ✗ MSTR 失败:`, err.message);
+  }
+
+  // 6. 计算综合决策
   try {
     const decision = computeDecision();
     cache.set('decision', decision);
@@ -165,6 +177,21 @@ function computeDecision() {
     reasons.push(`⚠ ${m.urgentCount}个重大事件在24h内`);
   }
 
+  // 6. MSTR 信号
+  const mstrData = cache.get('mstr');
+  if (mstrData && mstrData.navPremium) {
+    const nav = mstrData.navPremium.multiple;
+    if (nav > 2.0) {
+      score -= 1;
+      reasons.push(`⚠ MSTR NAV ${nav}x 极度FOMO，避免高卖`);
+    } else if (nav < 1.0) {
+      reasons.push(`MSTR NAV ${nav}x 折价，市场悲观`);
+    }
+  }
+  if (mstrData && mstrData.latestOffering && mstrData.latestOffering.isActive) {
+    reasons.push(`MSTR 正在执行融资购BTC，现货买盘持续，偏向低买`);
+  }
+
   // 生成建议
   let signal, level, advice;
   const safeDist = b.technicals.atr.safe15x;
@@ -194,6 +221,7 @@ app.get('/api/dashboard', (req, res) => {
   const deribitData = cache.get('deribit');
   const liqData = cache.get('liquidation');
   const macroData = cache.get('macro');
+  const mstrData = cache.get('mstr');
   const decision = cache.get('decision');
   const meta = cache.get('_meta');
 
@@ -208,6 +236,7 @@ app.get('/api/dashboard', (req, res) => {
     fractals: binanceData.fractals,
     liquidation: liqData || null,
     macro: macroData || null,
+    mstr: mstrData || null,
     decision: decision || null,
     meta,
   });
