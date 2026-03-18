@@ -34,7 +34,8 @@ background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0
 .logo{font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;letter-spacing:2px;color:var(--cyan);text-shadow:0 0 20px var(--cyan-glow)}
 .logo span{color:var(--yellow)}
 .btc-price{display:flex;align-items:baseline;gap:8px}
-.btc-price .price{font-family:'JetBrains Mono',monospace;font-size:1.8rem;font-weight:700;color:#fff}
+.btc-price .price{font-family:'JetBrains Mono',monospace;font-size:1.8rem;font-weight:700;
+background:linear-gradient(90deg,#fff 60%,var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .btc-price .change{font-family:'JetBrains Mono',monospace;font-size:.85rem;padding:2px 8px;border-radius:4px}
 .change.up{background:var(--green-bg);color:var(--green)}
 .change.down{background:var(--red-bg);color:var(--red)}
@@ -50,9 +51,10 @@ background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0
 .signal-main.yellow{background:linear-gradient(135deg,#f59e0b12,#f59e0b08);border:1px solid #f59e0b30}
 .signal-main.red{background:linear-gradient(135deg,#ef444412,#ef444408);border:1px solid #ef444430}
 .signal-icon{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0}
-.signal-main.green .signal-icon{background:radial-gradient(circle,#10b981,#059669);box-shadow:0 0 30px var(--green-glow)}
-.signal-main.yellow .signal-icon{background:radial-gradient(circle,#f59e0b,#d97706);box-shadow:0 0 30px var(--yellow-glow)}
-.signal-main.red .signal-icon{background:radial-gradient(circle,#ef4444,#dc2626);box-shadow:0 0 30px var(--red-glow)}
+.signal-main.green .signal-icon{background:radial-gradient(circle,#10b981,#059669);box-shadow:0 0 30px var(--green-glow);animation:signalPulse 3s ease-in-out infinite}
+.signal-main.yellow .signal-icon{background:radial-gradient(circle,#f59e0b,#d97706);box-shadow:0 0 30px var(--yellow-glow);animation:signalPulse 3s ease-in-out infinite}
+.signal-main.red .signal-icon{background:radial-gradient(circle,#ef4444,#dc2626);box-shadow:0 0 30px var(--red-glow);animation:signalPulse 2s ease-in-out infinite}
+@keyframes signalPulse{0%,100%{box-shadow:0 0 20px var(--green-glow)}50%{box-shadow:0 0 40px var(--green-glow),0 0 60px var(--green-glow)}}
 .signal-content h2{font-size:1.15rem;font-weight:700;margin-bottom:4px}
 .signal-content p{font-size:.85rem;color:var(--text-secondary);line-height:1.5}
 .signal-stats{display:flex;gap:12px;margin-left:auto;flex-shrink:0}
@@ -73,8 +75,8 @@ background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0
 .module-subtitle{font-size:.7rem;color:var(--text-muted);margin-left:auto;font-family:'JetBrains Mono',monospace}
 
 /* Metric Card */
-.metric-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;transition:.2s}
-.metric-card:hover{border-color:var(--border-active)}
+.metric-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;transition:all .3s ease}
+.metric-card:hover{border-color:var(--border-active);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,.3)}
 .metric-card:last-child{margin-bottom:0}
 .metric-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
 .metric-name{font-size:.8rem;font-weight:500;color:var(--text-secondary)}
@@ -129,10 +131,12 @@ background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0
 .event-countdown.normal{color:var(--text-secondary)}
 
 /* Heatmap */
-.heatmap{position:relative;height:120px;margin:12px 0;background:var(--bg-card-alt);border-radius:8px;overflow:hidden}
-.heatmap-bar{position:absolute;bottom:0;opacity:.7;border-radius:2px 2px 0 0;transition:height .5s}
-.heatmap-marker{position:absolute;width:2px;height:100%;background:var(--text-primary);z-index:2}
-.heatmap-marker::after{content:'现价';position:absolute;top:4px;left:6px;font-size:.6rem;color:var(--text-primary);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.heatmap{position:relative;height:120px;margin:12px 0;background:var(--bg-card-alt);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.heatmap-bar{position:absolute;bottom:0;border-radius:2px 2px 0 0;transition:height .8s ease}
+.heatmap-bar:hover{opacity:1!important;filter:brightness(1.3)}
+.heatmap-marker{position:absolute;width:2px;height:100%;z-index:2;
+background:linear-gradient(180deg,transparent,var(--text-primary),transparent)}
+.heatmap-marker::after{content:'▼ 现价';position:absolute;top:2px;left:6px;font-size:.6rem;color:var(--text-primary);font-family:'JetBrains Mono',monospace;white-space:nowrap;text-shadow:0 0 6px rgba(0,0,0,.8)}
 
 /* Recommendation Box */
 .rec-box{margin-top:16px;padding:16px 20px;border-radius:10px;border:1px dashed}
@@ -160,7 +164,7 @@ background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0
 .pulse-dot.yellow{background:var(--yellow);box-shadow:0 0 8px var(--yellow-glow)}
 
 /* Vol chart canvas */
-.vol-chart{width:100%;height:80px;margin:8px 0}
+.vol-chart{width:100%;height:120px;margin:8px 0}
 
 /* ═══ Responsive: Tablet (≤900px) ═══ */
 @media(max-width:900px){
@@ -414,11 +418,15 @@ function fmtP(n) { return n.toFixed(2) + '%'; }
 
 function renderTrafficLight(decision, data) {
   const el = document.getElementById('trafficLight');
+  const levelMap = { green: '🟢 绿灯', yellow: '🟡 黄灯', red: '🔴 红灯' };
+  const labelMap = { green: '适合做双币赢', yellow: '谨慎操作', red: '暂停购买' };
+  const iconMap = { green: '✓', yellow: '⚡', red: '✕' };
+  const level = decision.level || levelMap[decision.signal] || '🟡 黄灯';
   el.innerHTML = `
     <div class="signal-main ${decision.signal}">
-      <div class="signal-icon">${decision.signal === 'green' ? '✓' : decision.signal === 'yellow' ? '⚡' : '✕'}</div>
+      <div class="signal-icon">${iconMap[decision.signal] || '⚡'}</div>
       <div class="signal-content">
-        <h2>今日决策：${decision.level} ${decision.signal === 'green' ? '适合做双币赢' : decision.signal === 'yellow' ? '谨慎操作' : '暂停购买'}</h2>
+        <h2>今日决策：${level} ${labelMap[decision.signal] || '谨慎操作'}</h2>
         <p>${decision.advice}</p>
       </div>
       <div class="signal-stats">
@@ -665,9 +673,14 @@ function renderModule4(data) {
 
   const liqBarsHTML = liqZones.map((z, i) => {
     const left = (i / liqZones.length) * 100;
-    const height = (z.volume / maxVol) * 100;
-    const color = z.side === 'long' ? 'var(--green)' : 'var(--red)';
-    return `<div class="heatmap-bar" style="left:${left}%;width:${100/liqZones.length - 1}%;height:${height}%;background:${color}"></div>`;
+    const height = Math.max(5, (z.volume / maxVol) * 100);
+    const barW = 100/liqZones.length - 0.5;
+    const isLong = z.side === 'long';
+    const grad = isLong
+      ? 'linear-gradient(0deg, #10b98140, #10b981cc)'
+      : 'linear-gradient(0deg, #ef444440, #ef4444cc)';
+    const glow = isLong ? '0 0 8px #10b98150' : '0 0 8px #ef444450';
+    return `<div class="heatmap-bar" style="left:${left}%;width:${barW}%;height:${height}%;background:${grad};box-shadow:${glow}" title="${isLong?'多头':'空头'}清算 $${fmt(z.price)} 量:${z.volume.toFixed(0)}"></div>`;
   }).join('');
 
   // Find where current price falls in the range
@@ -675,24 +688,36 @@ function renderModule4(data) {
   const maxP = Math.max(...liqZones.map(z => z.price));
   const pricePos = ((data.price - minP) / (maxP - minP)) * 100;
 
-  const eventsHTML = events.map(e => {
-    const diff = e.date.getTime() - now;
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(hours / 24);
-    const remH = hours % 24;
-    const isUrgent = hours < 24;
-    const countdown = days > 0 ? `${days}天${remH}小时` : `${hours}小时`;
+  const eventsHTML = events.length > 0 ? events.map(e => {
+    // Support both backend pre-computed fields and client-side date objects
+    let hours, days, remH, isUrgent, countdown;
+    if (e.hoursUntil !== undefined) {
+      hours = e.hoursUntil;
+      days = Math.floor(hours / 24);
+      remH = hours % 24;
+      isUrgent = e.isUrgent;
+      countdown = e.countdown;
+    } else {
+      const diff = (e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime()) - now;
+      hours = Math.floor(diff / 3600000);
+      days = Math.floor(hours / 24);
+      remH = hours % 24;
+      isUrgent = hours < 24;
+      countdown = days > 0 ? `${days}天${remH}小时` : `${hours}小时`;
+    }
+    const dateObj = e.date instanceof Date ? e.date : new Date(e.date);
+    const dateStr = !isNaN(dateObj) ? `${dateObj.toLocaleDateString('zh-CN',{month:'short',day:'numeric'})} ${dateObj.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}` : '';
     return `
-      <div class="event-item">
+      <div class="event-item" style="${isUrgent ? 'border-color:var(--red);background:var(--red-bg)' : ''}">
         <div class="event-icon ${e.icon}">${e.icon === 'fed' ? '🏦' : e.icon === 'cpi' ? '📊' : e.icon === 'nfp' ? '👷' : '🔓'}</div>
         <div class="event-info">
-          <div class="event-name">${e.name}</div>
-          <div class="event-date">${e.date.toLocaleDateString('zh-CN', {month:'short',day:'numeric'})} ${e.date.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'})}</div>
+          <div class="event-name">${e.name}${e.impact === 'high' ? ' <span style="color:var(--red);font-size:.65rem">●高影响</span>' : ''}</div>
+          <div class="event-date">${dateStr}</div>
         </div>
         <div class="event-countdown ${isUrgent ? 'urgent' : 'normal'}">${isUrgent ? '⚠ ' : ''}${countdown}</div>
       </div>
     `;
-  }).join('');
+  }).join('') : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">暂无即将到来的宏观事件</div>';
 
   // Find major liquidation cluster
   const longLiqs = liqZones.filter(z => z.side === 'long').sort((a,b) => b.volume - a.volume);
@@ -764,7 +789,7 @@ function drawIVRVChart(iv, rv) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const W = canvas.width = canvas.offsetWidth * 2;
-  const H = canvas.height = 160;
+  const H = canvas.height = 240;
   ctx.scale(1, 1);
 
   // Generate history
@@ -783,46 +808,99 @@ function drawIVRVChart(iv, rv) {
   const all = [...ivHist, ...rvHist];
   const minV = Math.min(...all) - 5;
   const maxV = Math.max(...all) + 5;
+  const padTop = 20, padBot = 20, padLeft = 35, padRight = 50;
+  const chartW = W - padLeft - padRight;
+  const chartH = H - padTop - padBot;
 
-  function drawLine(data, color, dash) {
-    ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    if (dash) ctx.setLineDash(dash);
-    else ctx.setLineDash([]);
-    data.forEach((v, i) => {
-      const x = (i / (data.length - 1)) * W;
-      const y = H - ((v - minV) / (maxV - minV)) * H;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+  function toX(i) { return padLeft + (i / pts) * chartW; }
+  function toY(v) { return padTop + chartH - ((v - minV) / (maxV - minV)) * chartH; }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padTop + (chartH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(W - padRight, y); ctx.stroke();
+    const val = maxV - ((maxV - minV) / 4) * i;
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.font = '16px JetBrains Mono';
+    ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(0) + '%', padLeft - 6, y + 5);
   }
 
-  // Fill spread area
+  // Spread fill with gradient
+  const spreadGrad = ctx.createLinearGradient(0, padTop, 0, H - padBot);
+  if (iv > rv) {
+    spreadGrad.addColorStop(0, 'rgba(16,185,129,0.15)');
+    spreadGrad.addColorStop(1, 'rgba(16,185,129,0.02)');
+  } else {
+    spreadGrad.addColorStop(0, 'rgba(239,68,68,0.15)');
+    spreadGrad.addColorStop(1, 'rgba(239,68,68,0.02)');
+  }
   ctx.beginPath();
-  for (let i = 0; i <= pts; i++) {
-    const x = (i / pts) * W;
-    const y = H - ((ivHist[i] - minV) / (maxV - minV)) * H;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  for (let i = pts; i >= 0; i--) {
-    const x = (i / pts) * W;
-    const y = H - ((rvHist[i] - minV) / (maxV - minV)) * H;
-    ctx.lineTo(x, y);
-  }
+  for (let i = 0; i <= pts; i++) { const x = toX(i), y = toY(ivHist[i]); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  for (let i = pts; i >= 0; i--) { ctx.lineTo(toX(i), toY(rvHist[i])); }
   ctx.closePath();
-  ctx.fillStyle = iv > rv ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)';
+  ctx.fillStyle = spreadGrad;
   ctx.fill();
 
-  drawLine(ivHist, '#a855f7');
-  drawLine(rvHist, '#06b6d4', [4, 4]);
+  // Smooth curve helper
+  function drawSmoothLine(data, color, lineW, dash) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineW;
+    ctx.setLineDash(dash || []);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (let i = 0; i < data.length; i++) {
+      const x = toX(i), y = toY(data[i]);
+      if (i === 0) { ctx.moveTo(x, y); continue; }
+      // Bezier smoothing
+      const px = toX(i-1), py = toY(data[i-1]);
+      const cpx = (px + x) / 2;
+      ctx.bezierCurveTo(cpx, py, cpx, y, x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
-  // Labels
-  ctx.font = '18px JetBrains Mono';
-  ctx.fillStyle = '#a855f7';
-  ctx.fillText('IV', W - 60, H - ((iv - minV) / (maxV - minV)) * H - 4);
-  ctx.fillStyle = '#06b6d4';
-  ctx.fillText('RV', W - 30, H - ((rv - minV) / (maxV - minV)) * H - 4);
+  // IV line glow
+  ctx.save();
+  ctx.shadowColor = '#a855f7';
+  ctx.shadowBlur = 8;
+  drawSmoothLine(ivHist, '#a855f7', 3);
+  ctx.restore();
+  drawSmoothLine(ivHist, '#a855f7', 2.5);
+
+  // RV line
+  drawSmoothLine(rvHist, '#06b6d4', 2, [6, 4]);
+
+  // End dots
+  const ivEndX = toX(pts), ivEndY = toY(iv);
+  const rvEndX = toX(pts), rvEndY = toY(rv);
+
+  ctx.beginPath(); ctx.arc(ivEndX, ivEndY, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#a855f7'; ctx.fill();
+  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(rvEndX, rvEndY, 4, 0, Math.PI*2);
+  ctx.fillStyle = '#06b6d4'; ctx.fill();
+  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Labels with background
+  function drawLabel(text, x, y, color) {
+    ctx.font = 'bold 18px JetBrains Mono';
+    const w = ctx.measureText(text).width + 12;
+    ctx.fillStyle = color + '20';
+    ctx.beginPath();
+    ctx.roundRect(x, y - 12, w, 20, 4);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, x + 6, y + 4);
+  }
+  drawLabel(`IV ${iv.toFixed(0)}%`, ivEndX + 8, ivEndY, '#a855f7');
+  drawLabel(`RV ${rv.toFixed(0)}%`, rvEndX + 8, rvEndY, '#06b6d4');
 }
 
 // ─── Reasons Panel ───
