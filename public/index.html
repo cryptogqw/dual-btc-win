@@ -19,7 +19,10 @@
 --purple:#a855f7;--purple-glow:#a855f740;
 --orange:#f97316;
 }
-html{font-size:14px}
+html{font-size:16px;--fs-base:16}
+html.fs-sm{font-size:14px;--fs-base:14}
+html.fs-md{font-size:16px;--fs-base:16}
+html.fs-lg{font-size:18px;--fs-base:18}
 body{background:var(--bg-primary);color:var(--text-primary);font-family:'Noto Sans SC','JetBrains Mono',sans-serif;min-height:100vh;overflow-x:hidden;
 padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .mono{font-family:'JetBrains Mono',monospace;overflow-wrap:break-word}
@@ -43,6 +46,12 @@ background:linear-gradient(90deg,#fff 60%,var(--cyan));-webkit-background-clip:t
 .timestamp{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-muted)}
 .refresh-btn{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:.8rem;font-family:'JetBrains Mono',monospace;transition:.2s}
 .refresh-btn:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px var(--cyan-glow)}
+
+/* Font Size Toggle */
+.fs-toggle{display:flex;gap:2px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.fs-toggle button{background:none;border:none;color:var(--text-muted);padding:4px 10px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:500;transition:.2s;line-height:1}
+.fs-toggle button:hover{color:var(--text-secondary)}
+.fs-toggle button.active{background:var(--cyan);color:var(--bg-primary);font-weight:700}
 
 /* Traffic Light */
 .traffic-light-bar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:stretch;gap:16px}
@@ -170,7 +179,10 @@ background:linear-gradient(180deg,transparent,var(--text-primary),transparent)}
 
 /* ═══ Responsive: Tablet (≤900px) ═══ */
 @media(max-width:900px){
-html{font-size:13px}
+html{font-size:14px}
+html.fs-sm{font-size:13px}
+html.fs-md{font-size:14px}
+html.fs-lg{font-size:16px}
 .dashboard{grid-template-columns:1fr}
 .traffic-light-bar{flex-direction:column;padding:12px 16px}
 .signal-main{flex-direction:column;align-items:flex-start;padding:16px}
@@ -186,13 +198,17 @@ html{font-size:13px}
 
 /* ═══ Responsive: Mobile (≤600px) ═══ */
 @media(max-width:600px){
-html{font-size:12px}
+html{font-size:13px}
+html.fs-sm{font-size:12px}
+html.fs-md{font-size:13px}
+html.fs-lg{font-size:15px}
 
 /* Header: stack vertically */
 .header{flex-direction:column;align-items:flex-start;gap:10px;padding:12px 14px}
 .header-left{flex-direction:column;align-items:flex-start;gap:6px;width:100%}
-.header-right{width:100%;justify-content:space-between}
+.header-right{width:100%;justify-content:space-between;gap:8px}
 .logo{font-size:.95rem;letter-spacing:1.5px}
+.fs-toggle button{padding:6px 12px;font-size:.8rem;min-height:36px}
 .btc-price{width:100%}
 .btc-price .price{font-size:1.6rem}
 .btc-price .change{font-size:.75rem}
@@ -265,7 +281,10 @@ html{font-size:12px}
 
 /* ═══ Responsive: Small Mobile (≤380px) ═══ */
 @media(max-width:380px){
-html{font-size:11px}
+html{font-size:12px}
+html.fs-sm{font-size:11px}
+html.fs-md{font-size:12px}
+html.fs-lg{font-size:14px}
 .btc-price .price{font-size:1.4rem}
 .signal-stats{gap:6px}
 .signal-stat{padding:5px 6px}
@@ -282,6 +301,7 @@ html{font-size:11px}
 /* ═══ Touch-friendly enhancements ═══ */
 @media(hover:none) and (pointer:coarse){
 .refresh-btn{padding:10px 16px;font-size:.85rem;min-height:44px}
+.fs-toggle button{padding:8px 14px;min-height:44px}
 .metric-card{-webkit-tap-highlight-color:transparent}
 .event-item{min-height:48px}
 }
@@ -308,6 +328,11 @@ html{font-size:11px}
   </div>
   <div class="header-right">
     <div class="timestamp" id="timestamp">--</div>
+    <div class="fs-toggle" id="fsToggle">
+      <button onclick="setFontSize('sm')" title="小字号">小</button>
+      <button onclick="setFontSize('md')" class="active" title="中字号">中</button>
+      <button onclick="setFontSize('lg')" title="大字号">大</button>
+    </div>
     <button class="refresh-btn" onclick="forceRefresh()">⟳ 刷新数据</button>
   </div>
 </div>
@@ -332,6 +357,21 @@ html{font-size:11px}
 </div>
 
 <script>
+// ─── Font Size Toggle ───
+function setFontSize(size) {
+  document.documentElement.classList.remove('fs-sm', 'fs-md', 'fs-lg');
+  document.documentElement.classList.add('fs-' + size);
+  document.querySelectorAll('#fsToggle button').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.trim() === {sm:'小',md:'中',lg:'大'}[size]);
+  });
+  try { localStorage.setItem('dualwin-fs', size); } catch(e) {}
+}
+// Restore saved preference
+try {
+  const saved = localStorage.getItem('dualwin-fs');
+  if (saved && ['sm','md','lg'].includes(saved)) setFontSize(saved);
+} catch(e) {}
+
 // ─── Real Data API Client ───
 // 从后端 API 拉取缓存数据，后端负责定时刷新
 // 后端地址: 同源部署时为 '', 分离部署时改为后端 URL
