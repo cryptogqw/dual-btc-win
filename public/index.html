@@ -54,7 +54,7 @@ background:linear-gradient(90deg,#fff 60%,var(--cyan));-webkit-background-clip:t
 .fs-toggle button.active{background:var(--cyan);color:var(--bg-primary);font-weight:700}
 
 /* Traffic Light */
-.traffic-light-bar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:stretch;gap:16px}
+.traffic-light-bar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:12px}
 .signal-main{flex:1;padding:20px 24px;border-radius:12px;display:flex;align-items:center;gap:20px;position:relative;overflow:hidden}
 .signal-main.green{background:linear-gradient(135deg,#10b98112,#10b98108);border:1px solid #10b98130}
 .signal-main.yellow{background:linear-gradient(135deg,#f59e0b12,#f59e0b08);border:1px solid #f59e0b30}
@@ -432,32 +432,8 @@ function transformData(raw) {
 
 // ─── Decision Logic (前端兜底，后端v2引擎优先) ───
 function computeDecision(data) {
-  const vetoes = [];
-  if (data.iv < data.rv) {
-    vetoes.push({ severity: 'red', tag: '负期望', reason: `IV(${data.iv.toFixed(1)}%) < RV(${data.rv.toFixed(1)}%)，期权折价` });
-  }
-  if (data.bb.squeeze) {
-    vetoes.push({ severity: 'yellow', tag: '波动压缩', reason: `布林带极度收窄 (${data.bb.width.toFixed(1)}%)` });
-  }
-  const hasRed = vetoes.some(v => v.severity === 'red');
-  const hasYellow = vetoes.some(v => v.severity === 'yellow');
-
-  if (hasRed) {
-    return { signal: 'red', level: '🔴 红灯停止交易', score: 0, targetAPY: '0%', strikeDist: '∞',
-      bottleneck: vetoes[0].reason, positives: [], vetoes, factors: {},
-      reasons: vetoes.map(v => `⛔ [${v.tag}] ${v.reason}`), advice: '暂停交易' };
-  }
-  if (hasYellow) {
-    return { signal: 'yellow', level: '🟡 黄灯降级交易', score: 0, targetAPY: '5-10%',
-      strikeDist: `${(data.atr.safe15x * 1.5).toFixed(0)}%`,
-      bottleneck: vetoes[0].reason, positives: [], vetoes, factors: {},
-      reasons: vetoes.map(v => `⚠ [${v.tag}] ${v.reason}`), advice: '降级至5-10%年化' };
-  }
-
-  const score = Math.min(100, Math.max(0, 50 + (data.iv - data.rv) + (25 - data.adx.value)));
-  return { signal: 'green', level: '🟢 绿灯可做', score, targetAPY: score > 80 ? '20-30%' : '15-20%',
-    strikeDist: `${data.atr.safe15x.toFixed(1)}%`, bottleneck: null, positives: ['前端简易计算'],
-    vetoes: [], factors: {}, reasons: [`简易评分 ${score}`], advice: `建议年化 ${score > 80 ? '20-30%' : '15-20%'}` };
+  const e = { score:0, grade:'加载中', color:'yellow', apy:'0%', factors:[], vetoes:[], alerts:[], strike:{pct:0,price:0} };
+  return { sellPut:{...e}, sellCall:{...e}, strangle:null, globalVetoes:[], topAdvice:[], maxPainHint:null, meta:{signal:'yellow'} };
 }
 
 // ─── Render Functions ───
@@ -467,107 +443,115 @@ function fmtP(n) { return n.toFixed(2) + '%'; }
 function renderTrafficLight(decision, data) {
   const el = document.getElementById('trafficLight');
   const d = decision;
-  const isVeto = d.signal !== 'green';
-  const iconMap = { green: '✓', yellow: '⚡', red: '✕' };
+  const sp = d.sellPut || {}, sc = d.sellCall || {};
+  const gv = d.globalVetoes || [];
+  const sig = d.meta?.signal || 'yellow';
+  const price = d.meta?.currentPrice || data.price || 0;
 
-  // Score bar (only for green)
-  const scoreBarHTML = d.signal === 'green' && d.factors ? `
-    <div style="display:flex;gap:6px;margin-top:8px;font-size:.7rem">
-      <div style="flex:${d.factors.volatility?.score || 0};background:var(--purple);height:6px;border-radius:3px" title="波动率 ${d.factors.volatility?.score || 0}/40"></div>
-      <div style="flex:${d.factors.range?.score || 0};background:var(--cyan);height:6px;border-radius:3px" title="震荡 ${d.factors.range?.score || 0}/30"></div>
-      <div style="flex:${d.factors.safety?.score || 0};background:var(--green);height:6px;border-radius:3px" title="安全 ${d.factors.safety?.score || 0}/30"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text-muted);margin-top:2px;font-family:'JetBrains Mono',monospace">
-      <span>波动率 ${d.factors.volatility?.score || 0}/40</span>
-      <span>震荡 ${d.factors.range?.score || 0}/30</span>
-      <span>安全 ${d.factors.safety?.score || 0}/30</span>
-    </div>` : '';
+  // ── Helper: render one scorecard ──
+  function renderCard(side, card, icon, label, colorVar) {
+    const s = card.score || 0;
+    const gr = card.grade || '加载中';
+    const apy = card.apy || '0%';
+    const c = card.color || 'yellow';
+    const vetoed = card.callVetoed || false;
+    const strike = card.strike || {};
+    const factors = card.factors || [];
+    const alerts = card.alerts || [];
+    const vetoes = card.vetoes || [];
 
-  // Bottleneck or positives
-  const insightHTML = isVeto
-    ? `<div style="margin-top:8px;padding:8px 12px;background:rgba(0,0,0,.3);border-radius:6px;border-left:3px solid var(--${d.signal})">
-        <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:4px">⚠ 降级原因 (The Bottleneck)</div>
-        <div style="font-size:.82rem;color:var(--text-primary);line-height:1.5">${d.bottleneck || ''}</div>
-      </div>`
-    : (d.positives && d.positives.length > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:rgba(16,185,129,.06);border-radius:6px;border-left:3px solid var(--green)">
-        <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:4px">✅ 优势因子</div>
-        <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.5">${d.positives.join(' · ')}</div>
-      </div>` : '');
+    // Factor bars
+    const factorBarsHTML = factors.length > 0 ? factors.map(f => {
+      const pct = f.m > 0 ? (f.s / f.m * 100) : 0;
+      const barColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--yellow)' : 'var(--red)';
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:.75rem">
+        <span style="width:110px;color:var(--text-muted);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.n}</span>
+        <div style="flex:1;height:5px;background:#1e293b;border-radius:3px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;transition:width .6s"></div>
+        </div>
+        <span class="mono" style="width:36px;text-align:right;color:var(--text-muted);font-size:.65rem">${f.s}/${f.m}</span>
+      </div>`;
+    }).join('') : '';
 
-  // Alerts passthrough from bottom modules
-  const dangerAlerts = (d.alerts || []).filter(a => a.level === 'danger');
-  const warnAlerts = (d.alerts || []).filter(a => a.level === 'warn');
-  const alertsHTML = dangerAlerts.length > 0 || warnAlerts.length > 0 ? `
-    <div style="margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.06);border-radius:6px;border-left:3px solid var(--red)">
-      <div style="font-size:.7rem;color:var(--red);margin-bottom:4px;font-weight:600">🚨 底层警报透传 (Active Alerts)</div>
-      ${dangerAlerts.map(a => `<div style="font-size:.78rem;color:var(--red);line-height:1.5;margin-bottom:3px">⚠ <strong>[${a.module}]</strong> ${a.msg}</div>`).join('')}
-      ${warnAlerts.map(a => `<div style="font-size:.75rem;color:var(--yellow);line-height:1.5;margin-bottom:2px">⚡ <strong>[${a.module}]</strong> ${a.msg}</div>`).join('')}
-    </div>` : '';
+    // Danger alerts
+    const dangerAlerts = alerts.filter(a => a.level === 'danger');
+    const alertsHTML = dangerAlerts.length > 0 ? dangerAlerts.map(a =>
+      `<div style="font-size:.72rem;color:var(--red);line-height:1.4;margin-top:4px">🚨 ${a.msg}</div>`
+    ).join('') : '';
 
-  // Compute absolute strike prices
-  const strikeDistNum = parseFloat(d.strikeDist) || 0;
-  const curPrice = data.price || 0;
-  const lowStrike = curPrice > 0 ? Math.round(curPrice * (1 - strikeDistNum / 100)) : 0;
-  const highStrike = curPrice > 0 ? Math.round(curPrice * (1 + strikeDistNum / 100)) : 0;
+    // Veto badges (call-specific)
+    const vetoHTML = vetoed && (card.vetoes||[]).filter(v=>v.tag).length > 0
+      ? (card.vetoes||[]).filter(v=>v.tag&&v.reason).map(v =>
+        `<div style="font-size:.72rem;color:var(--red);padding:4px 8px;background:var(--red-bg);border-radius:4px;margin-top:4px">🚫 <strong>${v.tag}</strong>: ${v.reason}</div>`
+      ).join('')
+      : '';
 
-  // Direction-aware display
-  const hint = (d.directionHint || '').toLowerCase();
-  const onlyLow = hint.includes('只做') || hint.includes('低买') || hint.includes('不碰高卖') || hint.includes('避免高卖');
-  const onlyHigh = hint.includes('只做高卖');
+    return `
+    <div style="flex:1;min-width:280px;padding:16px;border-radius:12px;background:var(--bg-card);border:1px solid ${vetoed ? 'var(--red)' : c==='green' ? 'var(--green)' : c==='yellow' ? 'var(--yellow)' : 'var(--border)'}30;position:relative;overflow:hidden">
+      ${vetoed ? '<div style="position:absolute;top:0;right:0;background:var(--red);color:white;font-size:.65rem;padding:2px 10px;border-radius:0 0 0 8px;font-weight:700">熔断</div>' : ''}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="font-size:1.5rem">${icon}</div>
+        <div>
+          <div style="font-size:.8rem;color:var(--text-muted)">${label}</div>
+          <div style="font-size:.95rem;font-weight:700">${gr}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="mono" style="font-size:1.8rem;font-weight:700;color:var(--${c})">${vetoed ? '—' : s}</div>
+          <div style="font-size:.65rem;color:var(--text-muted)">/100</div>
+        </div>
+      </div>
 
-  let strikeDisplay = '';
-  if (onlyLow && curPrice > 0) {
-    strikeDisplay = `低买挂单 < <strong style="color:var(--cyan)">$${fmt(lowStrike)}</strong> <span style="font-size:.75rem;color:var(--text-muted)">(>${strikeDistNum}%)</span>`;
-  } else if (onlyHigh && curPrice > 0) {
-    strikeDisplay = `高卖挂单 > <strong style="color:var(--cyan)">$${fmt(highStrike)}</strong> <span style="font-size:.75rem;color:var(--text-muted)">(>${strikeDistNum}%)</span>`;
-  } else if (curPrice > 0) {
-    strikeDisplay = `低买 < <strong style="color:var(--green)">$${fmt(lowStrike)}</strong> · 高卖 > <strong style="color:var(--red)">$${fmt(highStrike)}</strong> <span style="font-size:.75rem;color:var(--text-muted)">(±${strikeDistNum}%)</span>`;
-  } else {
-    strikeDisplay = `<strong style="color:var(--cyan)">±${d.strikeDist || 'N/A'}</strong>`;
+      ${!vetoed ? `
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="flex:1;padding:8px;background:var(--bg-card-alt);border-radius:6px;text-align:center">
+          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">建议年化</div>
+          <div class="mono" style="font-size:1rem;font-weight:700;color:var(--${c})">${apy}</div>
+        </div>
+        <div style="flex:1;padding:8px;background:var(--bg-card-alt);border-radius:6px;text-align:center">
+          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">${side === 'put' ? '挂单价 <' : '挂单价 >'}</div>
+          <div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${strike.price ? '$' + fmt(strike.price) : '—'}</div>
+          <div style="font-size:.6rem;color:var(--text-muted)">${strike.pct ? (side==='put'?'-':'+')+strike.pct+'%' : ''}</div>
+        </div>
+      </div>` : ''}
+
+      ${factorBarsHTML ? `<div style="margin-bottom:8px">${factorBarsHTML}</div>` : ''}
+      ${vetoHTML}
+      ${alertsHTML}
+    </div>`;
   }
 
+  // ── Global vetoes bar ──
+  const gvHTML = gv.length > 0 ? `
+    <div style="padding:10px 16px;background:${gv.some(v=>v.severity==='red') ? 'var(--red-bg)' : 'var(--yellow-bg)'};border-radius:8px;margin-bottom:12px;border:1px solid ${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'}30">
+      <div style="font-size:.75rem;font-weight:700;color:${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'};margin-bottom:4px">⛔ 全局否决门触发</div>
+      ${gv.map(v => `<div style="font-size:.8rem;color:var(--text-primary);line-height:1.5"><strong>[${v.tag}]</strong> ${v.reason} → ${v.action}</div>`).join('')}
+    </div>` : '';
+
+  // ── Strangle recommendation ──
+  const strangleHTML = d.strangle?.recommended ? `
+    <div style="padding:10px 16px;background:linear-gradient(135deg,var(--green-bg),var(--cyan)08);border-radius:8px;margin-top:12px;border:1px solid var(--green)30">
+      <div style="font-size:.8rem;font-weight:700;color:var(--green);margin-bottom:4px">🎯 宽跨式双卖推荐 (Sell Strangle)</div>
+      <div style="font-size:.82rem;color:var(--text-secondary)">${d.strangle.note}</div>
+    </div>` : '';
+
+  // ── Top advice ──
+  const adviceHTML = (d.topAdvice||[]).length > 0 ? `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+      ${d.topAdvice.map(a => `<div style="font-size:.75rem;padding:4px 10px;background:var(--bg-card-alt);border-radius:6px;color:var(--text-secondary)">${a}</div>`).join('')}
+    </div>` : '';
+
+  // ── Max Pain hint ──
+  const mpHTML = d.maxPainHint ? `<div style="font-size:.75rem;color:var(--purple);margin-bottom:8px">🎯 ${d.maxPainHint}</div>` : '';
+
   el.innerHTML = `
-    <div class="signal-main ${d.signal}">
-      <div class="signal-icon">${iconMap[d.signal] || '⚡'}</div>
-      <div class="signal-content" style="flex:1;min-width:0">
-        <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span>${d.level || '🟡 黄灯'}</span>
-          <span style="font-size:.8rem;font-weight:400;color:var(--text-secondary)">|</span>
-          <span style="font-size:.85rem;font-weight:400">建议年化：<strong style="color:var(--${d.signal === 'green' ? 'green' : d.signal})">${d.targetAPY || 'N/A'}</strong></span>
-        </h2>
-        <div style="margin-top:6px;font-size:.88rem">${strikeDisplay}</div>
-        ${insightHTML}
-        ${alertsHTML}
-        ${d.directionHint ? `<div style="margin-top:6px;font-size:.75rem;color:var(--orange)">📊 ${d.directionHint}</div>` : ''}
-        ${d.maxPainHint ? `<div style="margin-top:3px;font-size:.75rem;color:var(--purple)">🎯 ${d.maxPainHint}</div>` : ''}
-        ${scoreBarHTML}
-      </div>
-      <div class="signal-stats">
-        <div class="signal-stat">
-          <label>${d.signal === 'green' || d.signal === 'yellow' ? '评分' : '状态'}</label>
-          <div class="val mono" style="color:var(--${d.signal})">${d.score > 0 ? d.score + '/100' : d.signal === 'red' ? '停止' : '降级'}</div>
-        </div>
-        <div class="signal-stat">
-          <label>ATR安全距</label>
-          <div class="val mono" style="color:var(--cyan)">${fmtP(data.atr.safe15x)}</div>
-        </div>
-        <div class="signal-stat">
-          <label>IV-RV</label>
-          <div class="val mono" style="color:${data.iv > data.rv ? 'var(--green)' : 'var(--red)'}">${data.iv > data.rv ? '+' : ''}${(data.iv - data.rv).toFixed(1)}%</div>
-        </div>
-        <div class="signal-stat">
-          <label>市场</label>
-          <div class="val mono">${data.adx.value < 20 ? '深度震荡' : data.adx.value < 25 ? (data.adx.trend === 'rising' ? '酝酿中⚡' : '震荡') : data.adx.value < 30 ? '过渡' : '趋势'}</div>
-        </div>
-      </div>
+    ${gvHTML}
+    ${mpHTML}
+    ${adviceHTML}
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${renderCard('put', sp, '📉', '低买 Sell Put', '--green')}
+      ${renderCard('call', sc, '📈', '高卖 Sell Call', '--red')}
     </div>
-    ${d.vetoes && d.vetoes.length > 0 ? `
-    <div class="rec-box ${d.signal}" style="margin:0;flex:0 0 280px">
-      <div class="rec-title"><span class="pulse-dot ${d.signal}"></span> 否决门 (${d.vetoes.length})</div>
-      <div class="rec-body">
-        ${d.vetoes.map(v => `<div style="margin-bottom:6px"><span style="color:var(--${v.severity});font-weight:600">[${v.tag}]</span> ${v.reason}</div>`).join('')}
-      </div>
-    </div>` : ''}
+    ${strangleHTML}
   `;
 }
 
