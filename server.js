@@ -351,10 +351,72 @@ function computeDecision() {
       note:`双向收租: 低买<$${pStrike.price.toLocaleString()} 且 高卖>$${cStrike.price.toLocaleString()}`};
   }
 
+  // ═══ 期限 × APR 联合建议矩阵 ═══
+  const dayOfWeek = new Date().getUTCDay(); // 0=Sun ... 5=Fri 6=Sat
+  const isFriday = dayOfWeek === 5;
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const atrPct = atr.pct || 3.5;
+
+  function buildTenorMatrix(score, dir, vetoed) {
+    if (vetoed || hasRed) {
+      return {
+        h24: { status:'禁止', apy:'0%', dist:0, strike:0, note:'全局停止或熔断' },
+        h48: { status:'禁止', apy:'0%', dist:0, strike:0, note:'全局停止或熔断' },
+        h72: { status:'禁止', apy:'0%', dist:0, strike:0, note:'全局停止或熔断' },
+      };
+    }
+
+    const mult = dir === 'put' ? -1 : 1;
+    const calcP = (pct) => Math.round(price * (1 + mult * pct / 100));
+
+    if (score >= 80) {
+      // 高分环境
+      return {
+        h24: { status:'🟢推荐', apy:'20-30%', dist: Math.round(atrPct*10)/10, strike: calcP(atrPct), note:`贴近1倍ATR，大胆收割Theta` },
+        h48: { status:'🟢推荐', apy:'18-24%', dist: Math.round(atrPct*1.5*10)/10, strike: calcP(atrPct*1.5), note:`退守1.5倍ATR，保留容错` },
+        h72: { status: hasYellow ? '⚠降级' : (isFriday ? '🟡谨慎' : '⚠不建议'),
+          apy: hasYellow ? '5-10%' : '12-18%',
+          dist: Math.round(atrPct*2*10)/10,
+          strike: calcP(atrPct*2),
+          note: isFriday ? `周末流动性真空，必须2倍ATR以外` : `非周五不建议72h` },
+      };
+    } else if (score >= 50) {
+      // 中分环境
+      return {
+        h24: { status:'🟡可做', apy:'15-20%', dist: Math.round(atrPct*1.2*10)/10, strike: calcP(atrPct*1.2), note:`须有分形/清算墙屏障` },
+        h48: { status:'🟡谨慎', apy:'10-15%', dist: Math.round(atrPct*1.5*10)/10, strike: calcP(atrPct*1.5), note:`放置在强支撑/阻力外侧` },
+        h72: { status:'⛔不建议', apy:'—', dist:0, strike:0, note:`混沌市场持仓3天，方向随时质变` },
+      };
+    } else {
+      // 低分环境
+      return {
+        h24: { status:'⚠防守', apy:'5-10%', dist: Math.round(atrPct*3*10)/10, strike: calcP(atrPct*3), note:`退守3倍ATR，只赚确定性利息` },
+        h48: { status:'🔒极远端', apy:'<5%', dist: Math.round(atrPct*4*10)/10, strike: calcP(atrPct*4), note:`仅极远端，无合适产品则法币站岗` },
+        h72: { status:'🚫禁止', apy:'0%', dist:0, strike:0, note:`危险期跨3天 = 流动性提款机` },
+      };
+    }
+  }
+
+  const putTenor = buildTenorMatrix(ps, 'put', false);
+  const callTenor = buildTenorMatrix(cs, 'call', callVetoed);
+
+  // 根据星期几生成今日仓位建议
+  const positionAdvice = [];
+  if (isWeekend) {
+    positionAdvice.push({ label:'周末', note:'建议不做新单，资金保留在活期理财' });
+  } else if (isFriday) {
+    positionAdvice.push({ label:'仓位A (50%)', tenor:'72h', note:'周五→周一策略', detail: putTenor.h72 });
+    positionAdvice.push({ label:'仓位B (50%)', tenor:'48h', note:'周五→周日策略', detail: putTenor.h48 });
+  } else {
+    positionAdvice.push({ label:'仓位A (50%)', tenor:'24h', note:'短期滚动', detail: putTenor.h24 });
+    positionAdvice.push({ label:'仓位B (50%)', tenor:'48h', note:'中期稳健', detail: putTenor.h48 });
+  }
+
   return {
-    sellPut: { score:ps, ...pg, factors:pf, vetoes:[...gv], alerts:pa, strike:pStrike },
-    sellCall: { score:cs, ...cg, factors:cf, vetoes:[...gv,...cv], callVetoed, alerts:ca, strike:cStrike },
-    strangle, globalVetoes:gv, topAdvice,
+    sellPut: { score:ps, ...pg, factors:pf, vetoes:[...gv], alerts:pa, strike:pStrike, tenor:putTenor },
+    sellCall: { score:cs, ...cg, factors:cf, vetoes:[...gv,...cv], callVetoed, alerts:ca, strike:cStrike, tenor:callTenor },
+    strangle, globalVetoes:gv, topAdvice, positionAdvice,
+    dayOfWeek, isFriday, isWeekend,
     skew: { putIV: skew.putIV||0, callIV: skew.callIV||0, diff: skewDiff, label: skewDiff>20?'🚨极端恐慌':skewDiff>5?'恐慌溢价':skewDiff>=-2?'中性':skewDiff>=-10?'FOMO':'极端FOMO' },
     maxPainHint: maxPain ? `Max Pain: $${maxPain.strike.toLocaleString()} (${maxPain.direction==='above'?'上方':'下方'} ${maxPain.distPct>0?'+':''}${maxPain.distPct}%)` : null,
     meta: { signal: hasRed?'red':hasYellow?'yellow':(callVetoed&&ps<40)?'yellow':'green', currentPrice:price },
