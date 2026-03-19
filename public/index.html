@@ -558,7 +558,6 @@ function renderTrafficLight(decision, data) {
 function renderModule1(data) {
   const ivRvSpread = data.iv - data.rv;
   const ivStatus = ivRvSpread > 10 ? 'safe' : ivRvSpread > 0 ? 'warn' : 'danger';
-  const skewStatus = data.skew.skew > 8 ? 'warn' : data.skew.skew > 3 ? 'safe' : 'safe';
 
   document.getElementById('module1').innerHTML = `
     <div class="module-header">
@@ -590,20 +589,52 @@ function renderModule1(data) {
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">多空波动率偏度 (Vol Skew)</span>
-        <span class="metric-badge badge-${skewStatus}">${data.skew.skew > 8 ? 'Put偏度高' : data.skew.skew > 3 ? '轻微偏空' : '均衡'}</span>
+        <span class="metric-name">偏度天平 (Vol Skew Balance)</span>
+        <span class="metric-badge badge-${Math.abs(data.skew.skew) > 20 ? 'danger' : Math.abs(data.skew.skew) > 5 ? 'warn' : 'safe'}">${data.skew.skew > 20 ? '🚨极端恐慌' : data.skew.skew > 5 ? '恐慌溢价' : data.skew.skew > -2 ? '均衡' : data.skew.skew > -10 ? 'FOMO' : '🚨极端FOMO'}</span>
       </div>
       <div class="metric-value-row">
-        <span class="metric-value">${data.skew.skew > 0 ? '+' : ''}${data.skew.skew.toFixed(2)}%</span>
-        <span class="metric-sub">Put ${data.skew.putIV.toFixed(2)}% / Call ${data.skew.callIV.toFixed(2)}%</span>
+        <span class="metric-value" style="color:${data.skew.skew > 5 ? 'var(--red)' : data.skew.skew < -5 ? 'var(--green)' : 'var(--text-primary)'}">${data.skew.skew > 0 ? '+' : ''}${data.skew.skew.toFixed(2)}%</span>
+        <span class="metric-sub">Put ${data.skew.putIV.toFixed(1)}% / Call ${data.skew.callIV.toFixed(1)}%</span>
       </div>
+
+      <!-- Seesaw visualization -->
+      <div style="position:relative;height:60px;margin:10px 0">
+        <svg width="100%" height="60" viewBox="0 0 400 60">
+          <!-- Fulcrum -->
+          <polygon points="200,55 190,40 210,40" fill="var(--text-muted)" opacity="0.3"/>
+          <!-- Beam - rotates based on skew -->
+          <g transform="rotate(${Math.max(-15, Math.min(15, -data.skew.skew * 0.8))}, 200, 38)">
+            <rect x="40" y="36" width="320" height="4" rx="2" fill="var(--border-active)"/>
+            <!-- Put side (left) -->
+            <rect x="45" y="${38 - Math.min(30, Math.max(8, data.skew.putIV * 0.4))}" width="60" height="${Math.min(30, Math.max(8, data.skew.putIV * 0.4))}" rx="3" fill="var(--red)" opacity="0.7"/>
+            <text x="75" y="14" fill="var(--red)" font-size="10" text-anchor="middle" font-family="JetBrains Mono" font-weight="600">PUT</text>
+            <text x="75" y="24" fill="var(--red)" font-size="9" text-anchor="middle" font-family="JetBrains Mono">${data.skew.putIV.toFixed(0)}%</text>
+            <!-- Call side (right) -->
+            <rect x="295" y="${38 - Math.min(30, Math.max(8, data.skew.callIV * 0.4))}" width="60" height="${Math.min(30, Math.max(8, data.skew.callIV * 0.4))}" rx="3" fill="var(--green)" opacity="0.7"/>
+            <text x="325" y="14" fill="var(--green)" font-size="10" text-anchor="middle" font-family="JetBrains Mono" font-weight="600">CALL</text>
+            <text x="325" y="24" fill="var(--green)" font-size="9" text-anchor="middle" font-family="JetBrains Mono">${data.skew.callIV.toFixed(0)}%</text>
+          </g>
+          <!-- Labels -->
+          <text x="75" y="58" fill="var(--text-muted)" font-size="8" text-anchor="middle" font-family="JetBrains Mono">恐慌 (低买利好)</text>
+          <text x="325" y="58" fill="var(--text-muted)" font-size="8" text-anchor="middle" font-family="JetBrains Mono">贪婪 (高卖利好)</text>
+        </svg>
+      </div>
+
+      <!-- Dual-side impact -->
       <div style="display:flex;gap:8px;margin:8px 0">
-        <div style="flex:${data.skew.putIV};height:24px;background:linear-gradient(90deg,var(--red),var(--red-glow));border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-family:'JetBrains Mono',monospace">PUT ${data.skew.putIV.toFixed(0)}%</div>
-        <div style="flex:${data.skew.callIV};height:24px;background:linear-gradient(90deg,var(--green-glow),var(--green));border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-family:'JetBrains Mono',monospace">CALL ${data.skew.callIV.toFixed(0)}%</div>
+        <div style="flex:1;padding:8px 10px;border-radius:6px;background:${data.skew.skew > 5 ? 'var(--green-bg)' : data.skew.skew < -2 ? 'var(--red-bg)' : 'var(--bg-card-alt)'};border-left:3px solid ${data.skew.skew > 5 ? 'var(--green)' : data.skew.skew < -2 ? 'var(--red)' : 'var(--border)'}">
+          <div style="font-size:.65rem;color:var(--text-muted)">📉 低买影响</div>
+          <div style="font-size:.78rem;color:${data.skew.skew > 5 ? 'var(--green)' : data.skew.skew < -2 ? 'var(--red)' : 'var(--text-secondary)'};font-weight:600;margin-top:2px">${data.skew.skew > 20 ? '🚨 熔断! 黑天鹅计价中' : data.skew.skew > 5 ? '✅ 恐慌补偿金丰厚' : data.skew.skew >= -2 ? '— 中性' : data.skew.skew >= -10 ? '⚠ Put权利金偏低' : '⛔ 利润极低+踩踏风险'}</div>
+        </div>
+        <div style="flex:1;padding:8px 10px;border-radius:6px;background:${data.skew.skew < -5 ? 'var(--green-bg)' : data.skew.skew > 2 ? 'var(--red-bg)' : 'var(--bg-card-alt)'};border-left:3px solid ${data.skew.skew < -5 ? 'var(--green)' : data.skew.skew > 2 ? 'var(--red)' : 'var(--border)'}">
+          <div style="font-size:.65rem;color:var(--text-muted)">📈 高卖影响</div>
+          <div style="font-size:.78rem;color:${data.skew.skew < -5 ? 'var(--green)' : data.skew.skew > 2 ? 'var(--red)' : 'var(--text-secondary)'};font-weight:600;margin-top:2px">${data.skew.skew < -20 ? '🚨 熔断! FOMO无阻力' : data.skew.skew < -5 ? '✅ 贪婪溢价丰厚' : data.skew.skew <= 2 ? '— 中性' : data.skew.skew <= 10 ? '⚠ Call权利金低' : '⛔ 底部高卖=送现货'}</div>
+        </div>
       </div>
+
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>${data.skew.skew > 5 ? 'Put IV 显著高于 Call IV，' : Math.abs(data.skew.skew) < 1 ? 'Put IV 与 Call IV 基本持平 (偏度仅 ' + data.skew.skew.toFixed(2) + '%)，' : 'Put IV 略高于 Call IV，'}
-        ${data.skew.skew > 8 ? '市场恐慌情绪浓厚，"低买 (Sell Put)" 年化极其丰厚！可把挂单价放到现价下方 8%，依然拿到超高年化。' : Math.abs(data.skew.skew) < 1 ? '市场情绪完全中性，多空均衡，正常配置即可。' : '市场情绪偏中性，正常配置即可。'}
+        <strong>偏度 = Put IV - Call IV = ${data.skew.skew > 0 ? '+' : ''}${data.skew.skew.toFixed(2)}%。</strong>
+        ${data.skew.skew > 20 ? '极端恐慌！市场正在计价黑天鹅事件，Put 贵得离谱。虽然低买年化看起来很高，但这是"飞刀接盘"的价格，禁止操作。' : data.skew.skew > 5 ? '适度恐慌，散户在疯买看跌保险。此时你做低买 = 把保险卖给恐慌的人，性价比碾压高卖。' : data.skew.skew >= -2 ? '多空均衡，无显著偏度溢价，正常操作即可。' : data.skew.skew >= -10 ? 'FOMO 期，散户在追高买 Call。高卖可收取贪婪溢价；低买则因 Put 权利金过低而安全垫不足。' : '极端 FOMO！Call 被买爆，做高卖利润丰厚但向上可能完全无阻力。同时 Put 极其便宜，低买毫无性价比。'}
       </div>
     </div>
   `;
