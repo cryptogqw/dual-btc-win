@@ -108,11 +108,32 @@ function computeDecision() {
   else if(ivRvSpread>=3){ps+=8;pf.push({n:'IV溢价一般',s:8,m:20});}
   else{ps+=3;pf.push({n:'IV溢价薄弱',s:3,m:20});}
 
-  // B. Put Skew溢价 (15)
-  const putPrem=(skew.putIV||0)-(skew.callIV||0);
-  if(putPrem>8){ps+=15;pf.push({n:'Put高溢价',s:15,m:15,d:`+${putPrem.toFixed(1)}%`});}
-  else if(putPrem>3){ps+=10;pf.push({n:'Put偏度正常',s:10,m:15});}
-  else{ps+=5;pf.push({n:'Put偏度平淡',s:5,m:15});}
+  // B. Put偏度打分 — 不对称 (15)
+  const skewDiff = (skew.putIV||0) - (skew.callIV||0);
+  if (skewDiff > 20) {
+    // 极端恐慌熔断: Put溢价离谱 = 市场计价黑天鹅，接飞刀
+    ps += -15;
+    pf.push({n:'🚨极端恐慌(熔断)',s:0,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
+    pa.push({level:'danger',msg:`Vol Skew +${skewDiff.toFixed(1)}% 极端恐慌！Put贵得离谱 = 市场正计价黑天鹅，禁止接飞刀`});
+  } else if (skewDiff > 5) {
+    // 适度恐慌: 最佳卖Put窗口，恐慌补偿金丰厚
+    ps += 15;
+    pf.push({n:'🛡恐慌溢价(极佳)',s:15,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
+  } else if (skewDiff >= -2) {
+    // 中性: 正常theta收益
+    ps += 8;
+    pf.push({n:'偏度中性',s:8,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+  } else if (skewDiff >= -10) {
+    // FOMO市场: Put卖不上价，安全垫薄
+    ps += -3;
+    pf.push({n:'⚠FOMO市场(Put廉价)',s:0,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+    pa.push({level:'warn',msg:`Skew ${skewDiff.toFixed(1)}%，FOMO期Put权利金过低，安全垫薄`});
+  } else {
+    // 极端FOMO: 利润极低 + 踩踏回调风险
+    ps += -10;
+    pf.push({n:'⛔极度FOMO(Put无利)',s:0,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+    pa.push({level:'danger',msg:`Skew ${skewDiff.toFixed(1)}% 极度FOMO！低买利润极低，且面临踩踏回调风险`});
+  }
 
   // ── 市场趋势 (25分) ──
   // C. ADX震荡 (15)
@@ -206,11 +227,32 @@ function computeDecision() {
   else if(ivRvSpread>=3){cs+=6;cf.push({n:'IV溢价一般',s:6,m:15});}
   else{cs+=2;cf.push({n:'IV溢价薄弱',s:2,m:15});}
 
-  // B. Call Skew FOMO (10)
-  const callPrem=(skew.callIV||0)-(skew.putIV||0);
-  if(callPrem>5){cs+=10;cf.push({n:'Call FOMO溢价',s:10,m:10,d:`+${callPrem.toFixed(1)}%`});}
-  else if(callPrem>0){cs+=6;cf.push({n:'Call偏度轻微',s:6,m:10});}
-  else{cs+=2;cf.push({n:'无Call溢价',s:2,m:10});}
+  // B. Call偏度打分 — 不对称，逻辑与Put完全相反 (15)
+  // skewDiff 已在低买段定义: putIV - callIV
+  if (skewDiff < -20) {
+    // 极端FOMO熔断: Call被买爆，向上毫无阻力
+    cs += -15;
+    cf.push({n:'🚨极端FOMO(熔断)',s:0,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+    ca.push({level:'danger',msg:`Vol Skew ${skewDiff.toFixed(1)}% 极端FOMO！Call被买爆，向上可能无阻力，极易卖飞`});
+  } else if (skewDiff < -5) {
+    // 适度贪婪: 最佳卖Call窗口，散户追高，趁机高价出租现货
+    cs += 15;
+    cf.push({n:'🟢贪婪溢价(极佳)',s:15,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+  } else if (skewDiff <= 2) {
+    // 中性
+    cs += 8;
+    cf.push({n:'偏度中性',s:8,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+  } else if (skewDiff <= 10) {
+    // 恐慌市: Call卖不上价，反弹可能很猛
+    cs += -3;
+    cf.push({n:'⚠恐慌期(Call廉价)',s:0,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
+    ca.push({level:'warn',msg:`Skew +${skewDiff.toFixed(1)}%，恐慌期Call权利金低，反弹踏空风险高`});
+  } else {
+    // 极端恐慌中的反弹预期: 免费送出看涨期权
+    cs += -10;
+    cf.push({n:'⛔恐慌极值(禁高卖)',s:0,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
+    ca.push({level:'danger',msg:`Skew +${skewDiff.toFixed(1)}% 恐慌极值！底部做高卖 = 免费送出看涨权，极易踏空报复性反弹`});
+  }
 
   // C. CVD 背离=假突破 (10)
   if(cvd?.divergence==='bearish_divergence'){cs+=10;cf.push({n:'假突破(CVD背离)',s:10,m:10,d:'合约拉盘+现货抛售'});}
@@ -313,6 +355,7 @@ function computeDecision() {
     sellPut: { score:ps, ...pg, factors:pf, vetoes:[...gv], alerts:pa, strike:pStrike },
     sellCall: { score:cs, ...cg, factors:cf, vetoes:[...gv,...cv], callVetoed, alerts:ca, strike:cStrike },
     strangle, globalVetoes:gv, topAdvice,
+    skew: { putIV: skew.putIV||0, callIV: skew.callIV||0, diff: skewDiff, label: skewDiff>20?'🚨极端恐慌':skewDiff>5?'恐慌溢价':skewDiff>=-2?'中性':skewDiff>=-10?'FOMO':'极端FOMO' },
     maxPainHint: maxPain ? `Max Pain: $${maxPain.strike.toLocaleString()} (${maxPain.direction==='above'?'上方':'下方'} ${maxPain.distPct>0?'+':''}${maxPain.distPct}%)` : null,
     meta: { signal: hasRed?'red':hasYellow?'yellow':(callVetoed&&ps<40)?'yellow':'green', currentPrice:price },
   };
