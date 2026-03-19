@@ -494,6 +494,16 @@ function renderTrafficLight(decision, data) {
         <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.5">${d.positives.join(' · ')}</div>
       </div>` : '');
 
+  // Alerts passthrough from bottom modules
+  const dangerAlerts = (d.alerts || []).filter(a => a.level === 'danger');
+  const warnAlerts = (d.alerts || []).filter(a => a.level === 'warn');
+  const alertsHTML = dangerAlerts.length > 0 || warnAlerts.length > 0 ? `
+    <div style="margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.06);border-radius:6px;border-left:3px solid var(--red)">
+      <div style="font-size:.7rem;color:var(--red);margin-bottom:4px;font-weight:600">🚨 底层警报透传 (Active Alerts)</div>
+      ${dangerAlerts.map(a => `<div style="font-size:.78rem;color:var(--red);line-height:1.5;margin-bottom:3px">⚠ <strong>[${a.module}]</strong> ${a.msg}</div>`).join('')}
+      ${warnAlerts.map(a => `<div style="font-size:.75rem;color:var(--yellow);line-height:1.5;margin-bottom:2px">⚡ <strong>[${a.module}]</strong> ${a.msg}</div>`).join('')}
+    </div>` : '';
+
   el.innerHTML = `
     <div class="signal-main ${d.signal}">
       <div class="signal-icon">${iconMap[d.signal] || '⚡'}</div>
@@ -506,6 +516,7 @@ function renderTrafficLight(decision, data) {
           <span style="font-size:.85rem;font-weight:400">执行价距离：<strong style="color:var(--cyan)">±${d.strikeDist || 'N/A'}</strong></span>
         </h2>
         ${insightHTML}
+        ${alertsHTML}
         ${d.directionHint ? `<div style="margin-top:6px;font-size:.75rem;color:var(--orange)">📊 ${d.directionHint}</div>` : ''}
         ${d.maxPainHint ? `<div style="margin-top:3px;font-size:.75rem;color:var(--purple)">🎯 ${d.maxPainHint}</div>` : ''}
         ${scoreBarHTML}
@@ -525,7 +536,7 @@ function renderTrafficLight(decision, data) {
         </div>
         <div class="signal-stat">
           <label>市场</label>
-          <div class="val mono">${data.adx.value < 25 ? '震荡' : data.adx.value < 30 ? '过渡' : '趋势'}</div>
+          <div class="val mono">${data.adx.value < 20 ? '深度震荡' : data.adx.value < 25 ? (data.adx.trend === 'rising' ? '酝酿中⚡' : '震荡') : data.adx.value < 30 ? '过渡' : '趋势'}</div>
         </div>
       </div>
     </div>
@@ -595,7 +606,7 @@ function renderModule1(data) {
 
 function renderModule2(data) {
   const bbStatus = data.bb.squeeze ? 'danger' : data.bb.width < 6 ? 'warn' : 'safe';
-  const adxStatus = data.adx.value > 30 ? 'danger' : data.adx.value > 25 ? 'warn' : 'safe';
+  const adxStatus = data.adx.value > 30 ? 'danger' : data.adx.value > 25 ? 'warn' : (data.adx.value >= 20 && data.adx.trend === 'rising') ? 'warn' : 'safe';
 
   document.getElementById('module2').innerHTML = `
     <div class="module-header">
@@ -633,7 +644,7 @@ function renderModule2(data) {
     <div class="metric-card">
       <div class="metric-top">
         <span class="metric-name">平均趋向指数 (ADX)</span>
-        <span class="metric-badge badge-${adxStatus}">${data.adx.value > 30 ? '⚠ 强趋势' : data.adx.value > 25 ? '趋势渐起' : '震荡市'}</span>
+        <span class="metric-badge badge-${adxStatus}">${data.adx.value > 30 ? '⚠ 强趋势' : data.adx.value > 25 ? '趋势渐起' : (data.adx.value >= 20 && data.adx.trend === 'rising') ? '⚡ 酝酿突破' : '震荡市'}</span>
       </div>
       <div class="metric-value-row">
         <span class="metric-value" style="color:${data.adx.value > 30 ? 'var(--red)' : data.adx.value > 25 ? 'var(--yellow)' : 'var(--green)'}">
@@ -661,8 +672,12 @@ function renderModule2(data) {
         <div class="calc-item" style="flex:1"><label>方向</label><div class="val mono" style="color:${data.adx.di_plus > data.adx.di_minus ? 'var(--green)' : 'var(--red)'}">${data.adx.di_plus > data.adx.di_minus ? '偏多' : '偏空'}</div></div>
       </div>
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>${data.adx.value < 25
-          ? '🟢 ADX < 25，确认震荡市！双币赢印钞机模式，可大胆追求 15-20% 年化。'
+        <strong>决策逻辑：</strong>${data.adx.value < 20
+          ? '🟢 ADX < 20，深度震荡市！双币赢印钞机模式，可追求 15-20% 年化。'
+          : data.adx.value < 25 && data.adx.trend === 'rising'
+          ? `🟡 ADX=${data.adx.value.toFixed(1)} 距警戒线25仅差 ${(25-data.adx.value).toFixed(1)} 且正在上升！趋势酝酿中，建议缩短期限至24h，降低年化目标。`
+          : data.adx.value < 25
+          ? '🟢 ADX < 25 且趋势平稳，震荡市环境，可正常操作。'
           : data.adx.value < 30
           ? '🟡 ADX 处于过渡区间，趋势可能正在形成。建议降低年化至 10-15%，提高安全距离。'
           : '🔴 ADX > 30，趋势已确立！双币赢极易被单边击穿，必须切换到高防御模式或暂停购买。'}
@@ -1171,7 +1186,7 @@ function renderModule6(data) {
         </div>
         <div class="calc-grid" style="grid-template-columns:1fr 1fr">
           <div class="calc-item"><label>距现价</label><div class="val mono" style="color:${Math.abs(mp.distPct) < 3 ? 'var(--red)' : 'var(--green)'}">${mp.distPct > 0 ? '+' : ''}${mp.distPct}%</div></div>
-          <div class="calc-item"><label>方向</label><div class="val mono">${mp.direction === 'above' ? '现价下方 ↓' : '现价上方 ↑'}</div></div>
+          <div class="calc-item"><label>引力方向</label><div class="val mono" style="color:${mp.direction === 'above' ? 'var(--green)' : 'var(--red)'}">${mp.direction === 'above' ? 'Max Pain 在上方 ↑' : 'Max Pain 在下方 ↓'}</div></div>
           <div class="calc-item"><label>到期日</label><div class="val mono" style="font-size:.8rem">${mp.expiry}</div></div>
           <div class="calc-item"><label>期权OI</label><div class="val mono" style="font-size:.8rem">${mp.totalOI?.toLocaleString() || 'N/A'}</div></div>
         </div>
