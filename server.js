@@ -227,6 +227,7 @@ function computeDecision() {
       bottleneckAction: mainVeto.action,
       positives: [],
       vetoes,
+      alerts: vetoes.map(v => ({ level: v.severity === 'red' ? 'danger' : 'warn', module: v.tag, msg: v.reason })),
       factors: {},
       reasons: vetoes.map(v => `⛔ [${v.tag}] ${v.reason}`),
       advice: mainVeto.action,
@@ -245,6 +246,7 @@ function computeDecision() {
       bottleneckAction: mainVeto.action,
       positives: [],
       vetoes,
+      alerts: vetoes.map(v => ({ level: v.severity === 'red' ? 'danger' : 'warn', module: v.tag, msg: v.reason })),
       factors: {},
       reasons: vetoes.map(v => `⚠ [${v.tag}] ${v.reason}`),
       advice: mainVeto.action,
@@ -256,6 +258,7 @@ function computeDecision() {
   // 通过一票否决 = 绿灯，但要决定进攻强度
   // ═══════════════════════════════════════════════
   const factors = {};
+  const alerts = []; // 底层警报透传
 
   // 因子1: 波动率溢价 (权重40%) — IV/RV Spread
   let volScore = 0;
@@ -266,21 +269,37 @@ function computeDecision() {
   else volScore = 10;
   factors.volatility = { score: volScore, max: 40, detail: `IV-RV=${ivRvSpread}%` };
 
-  // 因子2: 市场震荡 (权重30%) — ADX低 + BB正常
+  // 因子2: 市场震荡 (权重30%) — ADX + BB
+  // ★ ADX 缓冲带: 20-25且上升 = 酝酿突破期，不再视为安全震荡
   let rangeScore = 0;
-  if (adx.value < 20) rangeScore += 20;
-  else if (adx.value < 25) rangeScore += 15;
-  else if (adx.value < 28) rangeScore += 8;
-  else rangeScore += 3;
+  if (adx.value < 20) {
+    rangeScore += 20; // 真正的印钞机震荡
+  } else if (adx.value < 25 && adx.trend !== 'rising') {
+    rangeScore += 15; // 低ADX但没在上升，尚可
+  } else if (adx.value < 25 && adx.trend === 'rising') {
+    rangeScore += 8;  // ★ 酝酿突破: ADX 20-25 且上升
+    alerts.push({
+      level: 'warn', module: 'M2',
+      msg: `ADX=${adx.value} 距警戒线25仅差 ${(25-adx.value).toFixed(1)} 且上升中，趋势正在酝酿，建议缩短期限至24h或降低年化`,
+    });
+  } else if (adx.value < 28) {
+    rangeScore += 5;
+    alerts.push({ level: 'warn', module: 'M2', msg: `ADX=${adx.value} 进入过渡区间，趋势可能正在形成` });
+  } else {
+    rangeScore += 2;
+    alerts.push({ level: 'danger', module: 'M2', msg: `ADX=${adx.value} 趋势已确立，双币赢被击穿风险高` });
+  }
   // BB 正常范围加分
   if (bb.percentile > 30 && bb.percentile < 70) rangeScore += 10;
   else if (bb.percentile > 15) rangeScore += 5;
+  else {
+    alerts.push({ level: 'warn', module: 'M2', msg: `布林带宽度处于 ${bb.percentile}% 低分位，波动可能骤增` });
+  }
   rangeScore = Math.min(30, rangeScore);
-  factors.range = { score: rangeScore, max: 30, detail: `ADX=${adx.value}, BB百分位=${bb.percentile}%` };
+  factors.range = { score: rangeScore, max: 30, detail: `ADX=${adx.value}(${adx.trend}), BB=${bb.percentile}%分位` };
 
   // 因子3: 微观结构安全边际 (权重30%)
   let safetyScore = 0;
-  // ATR 安全距离足够
   if (atr.safe15x >= 5) safetyScore += 10;
   else if (atr.safe15x >= 3.5) safetyScore += 7;
   else safetyScore += 3;
@@ -289,72 +308,144 @@ function computeDecision() {
   if (fractals.supports.length >= 2 && fractals.resistances.length >= 2) safetyScore += 8;
   else if (fractals.supports.length >= 1) safetyScore += 4;
   // CVD 一致性
-  if (deriv && deriv.cvd && deriv.cvd.divergence === 'aligned') safetyScore += 7;
-  else if (deriv && deriv.cvd && deriv.cvd.divergence === 'bearish_divergence') safetyScore += 2;
-  else safetyScore += 5;
+  if (deriv && deriv.cvd && deriv.cvd.divergence === 'aligned') {
+    safetyScore += 7;
+  } else if (deriv && deriv.cvd && deriv.cvd.divergence === 'bearish_divergence') {
+    safetyScore += 2;
+    alerts.push({
+      level: 'danger', module: 'M6-CVD',
+      msg: '合约现货 CVD 背离：合约拉盘但现货在抛售，上涨极脆弱，典型假突破信号',
+    });
+  } else if (deriv && deriv.cvd && deriv.cvd.divergence === 'bullish_divergence') {
+    safetyScore += 5;
+    alerts.push({ level: 'info', module: 'M6-CVD', msg: '现货吸筹但合约做空，存在潜在轧空机会' });
+  } else {
+    safetyScore += 5;
+  }
   // 资金费率健康
-  if (deriv && deriv.funding && Math.abs(deriv.funding.annualized) < 15) safetyScore += 5;
-  else safetyScore += 2;
+  if (deriv && deriv.funding && Math.abs(deriv.funding.annualized) < 15) {
+    safetyScore += 5;
+  } else if (deriv && deriv.funding) {
+    safetyScore += 2;
+    if (deriv.funding.annualized > 30) {
+      alerts.push({ level: 'warn', module: 'M6-FR', msg: `资金费率年化 ${deriv.funding.annualized.toFixed(0)}%，多头拥挤` });
+    }
+  }
   safetyScore = Math.min(30, safetyScore);
   factors.safety = { score: safetyScore, max: 30, detail: `ATR=${atr.safe15x}%, CVD=${deriv?.cvd?.divergence || 'N/A'}` };
 
   const totalScore = volScore + rangeScore + safetyScore;
 
+  // ═══════════════════════════════════════════════
+  // 第三阶段: 信号冲突检测 (Divergence Alert)
+  // 当底层因子出现严重多空互斥时，强制拉宽执行价
+  // ═══════════════════════════════════════════════
+  let conflictPenalty = false;
+  let conflictMsg = '';
+
+  // 检测: CVD=假突破(利空) + MaxPain向上引力/MSTR利多 = 严重冲突
+  const cvdBearish = deriv?.cvd?.divergence === 'bearish_divergence';
+  const maxPainBullish = d.maxPain && d.maxPain.direction === 'above';
+  const mstrBullish = mstrData?.latestOffering?.isActive;
+
+  if (cvdBearish && (maxPainBullish || mstrBullish)) {
+    conflictPenalty = true;
+    const bullSources = [];
+    if (maxPainBullish) bullSources.push(`Max Pain 在上方 $${d.maxPain.strike.toLocaleString()}`);
+    if (mstrBullish) bullSources.push('MSTR 持续买入');
+    conflictMsg = `多空信号严重冲突：CVD 显示假突破(利空)，但 ${bullSources.join(' + ')} (利多)。上涨是纯杠杆推动，极脆弱。`;
+    alerts.push({ level: 'danger', module: '冲突检测', msg: conflictMsg });
+  }
+
+  // 检测: 资金费率高+CVD背离 = 杠杆假繁荣
+  if (deriv?.funding?.annualized > 30 && cvdBearish) {
+    if (!conflictPenalty) {
+      conflictPenalty = true;
+      conflictMsg = `杠杆假繁荣：资金费率 ${deriv.funding.annualized.toFixed(0)}% 偏高 + 现货 CVD 抛售，上涨全靠合约撑，极不稳定。`;
+      alerts.push({ level: 'danger', module: '冲突检测', msg: conflictMsg });
+    }
+  }
+
   // 生成正面因子列表
   const positives = [];
   if (ivRvSpread >= 10) positives.push(`IV溢价充足 (IV-RV=+${ivRvSpread}%)`);
-  if (adx.value < 25) positives.push(`ADX=${adx.value} 无趋势震荡`);
-  if (bb.percentile > 30) positives.push(`布林带宽度正常`);
+  if (adx.value < 20) positives.push(`ADX=${adx.value} 深度震荡，印钞机模式`);
+  else if (adx.value < 25 && adx.trend !== 'rising') positives.push(`ADX=${adx.value} 低位震荡`);
+  if (bb.percentile > 30 && bb.percentile < 70) positives.push(`布林带宽度正常`);
   if (deriv?.cvd?.divergence === 'aligned') positives.push(`现货与合约方向一致`);
   if (deriv?.funding && Math.abs(deriv.funding.annualized) < 15) positives.push(`资金费率健康`);
 
-  // 映射决策
+  // 映射决策（冲突时强制降级执行价）
   let targetAPY, strikeDist, level;
-  if (totalScore > 80) {
+  const baseStrike15 = atr.safe15x;
+
+  if (conflictPenalty) {
+    // 冲突: 分数不变，但执行价强制拉宽，且只建议低买
+    const conflictStrike = Math.max(8, baseStrike15 * 1.4);
+    if (totalScore > 80) {
+      targetAPY = '15-20%';
+      level = '🟡 绿灯但有冲突';
+    } else if (totalScore > 50) {
+      targetAPY = '10-15%';
+      level = '🟡 绿灯但有冲突';
+    } else {
+      targetAPY = '5-10%';
+      level = '🟡 绿灯但有冲突';
+    }
+    strikeDist = `${conflictStrike.toFixed(1)}%`;
+  } else if (totalScore > 80) {
     targetAPY = '20-30%';
     strikeDist = `${atr.pct.toFixed(1)}%`;
     level = '🟢 绿灯最佳窗口';
   } else if (totalScore > 50) {
     targetAPY = '15-20%';
-    strikeDist = `${atr.safe15x.toFixed(1)}%`;
+    strikeDist = `${baseStrike15.toFixed(1)}%`;
     level = '🟢 绿灯可做';
   } else {
     targetAPY = '10-15%';
-    strikeDist = `${(atr.safe15x * 1.3).toFixed(1)}%`;
+    strikeDist = `${(baseStrike15 * 1.3).toFixed(1)}%`;
     level = '🟢 绿灯保守';
   }
 
-  // MSTR 方向性建议
+  // 方向建议
   let directionHint = '';
-  if (mstrData?.latestOffering?.isActive) {
+  if (conflictPenalty) {
+    directionHint = '⚠ 只做极深低买 (Sell Put)，不碰高卖';
+  } else if (mstrData?.latestOffering?.isActive) {
     directionHint = '偏向低买 (MSTR持续买入现货)';
   }
   if (mstrData?.navPremium?.multiple > 2.0) {
     directionHint = '避免高卖 (MSTR NAV极度FOMO)';
   }
+  if (cvdBearish && !conflictPenalty) {
+    directionHint += (directionHint ? ' · ' : '') + '做高卖胜率高 (CVD假突破)';
+  }
 
   // Max Pain 提示
   let maxPainHint = '';
   if (d.maxPain) {
-    maxPainHint = `周五Max Pain: $${d.maxPain.strike.toLocaleString()} (距现价${d.maxPain.distPct}%)`;
+    const mpDir = d.maxPain.direction === 'above' ? '上方↑价格被向上吸引' : '下方↓价格被向下拽';
+    maxPainHint = `周五 Max Pain: $${d.maxPain.strike.toLocaleString()} (${mpDir}, 距现价${d.maxPain.distPct > 0 ? '+' : ''}${d.maxPain.distPct}%)`;
   }
 
   return {
-    signal: 'green',
+    signal: conflictPenalty ? 'yellow' : 'green',
     level,
     score: totalScore,
     targetAPY,
     strikeDist,
-    bottleneck: null,
-    bottleneckAction: null,
+    bottleneck: conflictPenalty ? conflictMsg : null,
+    bottleneckAction: conflictPenalty ? '执行价强制拉宽，仅做极深低买' : null,
     positives,
     vetoes: [],
+    alerts,  // ★ 底层警报透传
     factors,
     directionHint,
     maxPainHint,
     reasons: [
       `综合评分 ${totalScore}/100: 波动率${volScore}/40 + 震荡${rangeScore}/30 + 安全${safetyScore}/30`,
       ...positives.map(p => `✅ ${p}`),
+      ...alerts.filter(a => a.level === 'danger').map(a => `🚨 [${a.module}] ${a.msg}`),
       directionHint ? `📊 ${directionHint}` : null,
       maxPainHint ? `🎯 ${maxPainHint}` : null,
     ].filter(Boolean),
