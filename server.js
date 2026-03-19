@@ -49,6 +49,8 @@ async function fetchAndCache() {
 // ═══════════════════════════════════════════════════════════════
 // 决策引擎 v3: 双轨独立评分 (Sell Put / Sell Call)
 // ═══════════════════════════════════════════════════════════════
+function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+
 function computeDecision() {
   const b = cache.get('binance'), d = cache.get('deribit'), m = cache.get('macro');
   const deriv = cache.get('derivatives'), mstrData = cache.get('mstr'), liqData = cache.get('liquidation');
