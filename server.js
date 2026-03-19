@@ -1,14 +1,6 @@
 /**
- * BTC 双币赢决策终端 - 后端服务
- * 
- * 功能：
- * - 定时拉取 Binance / Deribit / Coinglass 数据
- * - 内存缓存，前端只读缓存
- * - 综合计算决策信号（红绿灯）
- * - 提供 RESTful API 给前端
- * 
- * 启动: npm start
- * 开发: npm run dev (自动重启)
+ * BTC 双币赢决策终端 - 后端服务 v3
+ * 双轨独立评分: Sell Put / Sell Call
  */
 
 const express = require('express');
@@ -17,7 +9,6 @@ const cron = require('node-cron');
 const path = require('path');
 const cache = require('./cache');
 
-// 服务模块
 const binance = require('./services/binance');
 const deribit = require('./services/deribit');
 const coinglass = require('./services/coinglass');
@@ -28,542 +19,221 @@ const derivatives = require('./services/derivatives');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── 中间件 ───
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── 数据拉取逻辑 ───
+// ─── 数据拉取 ───
 async function fetchAndCache() {
-  const startTime = Date.now();
-  console.log(`\n${'='.repeat(50)}`);
-  console.log(`[${new Date().toISOString()}] 开始数据刷新...`);
-
+  const t = Date.now();
+  console.log(`\n${'='.repeat(50)}\n[${new Date().toISOString()}] 数据刷新...`);
   const errors = [];
 
-  // 1. Binance 数据 (价格、技术指标、分形)
-  try {
-    const binanceData = await binance.fetchAll();
-    cache.set('binance', binanceData);
-    console.log(`  ✓ Binance: 价格 $${binanceData.price.price.toLocaleString()}`);
-  } catch (err) {
-    errors.push(`Binance: ${err.message}`);
-    console.error(`  ✗ Binance 失败:`, err.message);
-  }
+  try { const d = await binance.fetchAll(); cache.set('binance', d); console.log(`  ✓ Binance $${d.price.price.toLocaleString()}`); } catch(e) { errors.push(`Binance: ${e.message}`); console.error(`  ✗ Binance:`, e.message); }
+  try { const d = await deribit.fetchAll(); cache.set('deribit', d); console.log(`  ✓ Deribit IV=${d.iv}% RV=${d.rv}%`); } catch(e) { errors.push(`Deribit: ${e.message}`); console.error(`  ✗ Deribit:`, e.message); }
+  try { const p = cache.get('binance')?.price?.price||84000; const d = await coinglass.fetchAll(p); cache.set('liquidation', d); console.log(`  ✓ 清算: ${d.source}`); } catch(e) { errors.push(e.message); }
+  try { const d = await macro.fetchAll(); cache.set('macro', d); console.log(`  ✓ 宏观: ${d.events.length}事件`); } catch(e) { errors.push(e.message); }
+  try { const p = cache.get('binance')?.price?.price||84000; const d = await mstr.fetchAll(p); cache.set('mstr', d); } catch(e) { errors.push(e.message); }
+  try { const p = cache.get('binance')?.price?.price||84000; const d = await derivatives.fetchAll(p); cache.set('derivatives', d); } catch(e) { errors.push(e.message); }
 
-  // 2. Deribit 数据 (IV, RV, Skew)
-  try {
-    const deribitData = await deribit.fetchAll();
-    cache.set('deribit', deribitData);
-    console.log(`  ✓ Deribit: IV=${deribitData.iv}%, RV=${deribitData.rv}%`);
-  } catch (err) {
-    errors.push(`Deribit: ${err.message}`);
-    console.error(`  ✗ Deribit 失败:`, err.message);
-  }
-
-  // 3. 清算数据
-  try {
-    const binanceCache = cache.get('binance');
-    const price = binanceCache?.price?.price || 84000;
-    const liqData = await coinglass.fetchAll(price);
-    cache.set('liquidation', liqData);
-    console.log(`  ✓ 清算数据: 来源=${liqData.source}`);
-  } catch (err) {
-    errors.push(`Liquidation: ${err.message}`);
-    console.error(`  ✗ 清算数据失败:`, err.message);
-  }
-
-  // 4. 宏观事件
-  try {
-    const macroData = await macro.fetchAll();
-    cache.set('macro', macroData);
-    console.log(`  ✓ 宏观事件: ${macroData.events.length} 个即将到来`);
-  } catch (err) {
-    errors.push(`Macro: ${err.message}`);
-    console.error(`  ✗ 宏观事件失败:`, err.message);
-  }
-
-  // 5. MSTR 指标
-  try {
-    const binanceCache = cache.get('binance');
-    const btcPrice = binanceCache?.price?.price || 84000;
-    const mstrData = await mstr.fetchAll(btcPrice);
-    cache.set('mstr', mstrData);
-  } catch (err) {
-    errors.push(`MSTR: ${err.message}`);
-    console.error(`  ✗ MSTR 失败:`, err.message);
-  }
-
-  // 6. 衍生品指标 (Funding, OI, CVD)
-  try {
-    const binanceCache = cache.get('binance');
-    const btcPrice = binanceCache?.price?.price || 84000;
-    const derivData = await derivatives.fetchAll(btcPrice);
-    cache.set('derivatives', derivData);
-  } catch (err) {
-    errors.push(`Derivatives: ${err.message}`);
-    console.error(`  ✗ 衍生品指标失败:`, err.message);
-  }
-
-  // 7. 计算综合决策
   try {
     const decision = computeDecision();
     cache.set('decision', decision);
-    console.log(`  ★ 决策信号: ${decision.signal.toUpperCase()} (评分: ${decision.score})`);
-  } catch (err) {
-    errors.push(`Decision: ${err.message}`);
-    console.error(`  ✗ 决策计算失败:`, err.message);
-  }
+    console.log(`  ★ 低买 ${decision.sellPut.score}/100 (${decision.sellPut.grade}) | 高卖 ${decision.sellCall.score}/100 (${decision.sellCall.grade})`);
+  } catch(e) { errors.push(`Decision: ${e.message}`); console.error(`  ✗ 决策:`, e.message); }
 
-  const elapsed = Date.now() - startTime;
-  console.log(`[完成] 耗时 ${elapsed}ms, 错误: ${errors.length}`);
-  if (errors.length > 0) console.log(`  错误详情:`, errors);
-  console.log('='.repeat(50));
-
-  cache.set('_meta', {
-    lastRefresh: new Date().toISOString(),
-    elapsed,
-    errors,
-  });
+  console.log(`[完成] ${Date.now()-t}ms, 错误: ${errors.length}\n${'='.repeat(50)}`);
+  cache.set('_meta', { lastRefresh: new Date().toISOString(), elapsed: Date.now()-t, errors });
 }
 
-// ─── 决策引擎 v2: 约束主导型 (Constraint-Led) ───
+// ═══════════════════════════════════════════════════════════════
+// 决策引擎 v3: 双轨独立评分 (Sell Put / Sell Call)
+// ═══════════════════════════════════════════════════════════════
 function computeDecision() {
-  const b = cache.get('binance');
-  const d = cache.get('deribit');
-  const m = cache.get('macro');
-  const deriv = cache.get('derivatives');
-  const mstrData = cache.get('mstr');
+  const b = cache.get('binance'), d = cache.get('deribit'), m = cache.get('macro');
+  const deriv = cache.get('derivatives'), mstrData = cache.get('mstr'), liqData = cache.get('liquidation');
 
-  if (!b || !d) {
-    return { signal: 'yellow', level: '🟡 数据加载中', score: 0, targetAPY: '5-10%',
-      strikeDist: '10%', bottleneck: '数据不完整，等待刷新', positives: [], vetoes: [],
-      factors: {}, reasons: ['数据不完整'], advice: '等待数据加载...' };
+  const empty = { score:0, grade:'加载中', color:'yellow', apy:'0%', factors:[], vetoes:[], alerts:[], strike:{pct:0,price:0} };
+  if (!b || !d) return { sellPut:{...empty}, sellCall:{...empty}, strangle:null, globalVetoes:[], topAdvice:[], maxPainHint:null, meta:{signal:'yellow'} };
+
+  const atr=b.technicals.atr, bb=b.technicals.bb, adx=b.technicals.adx;
+  const ivRvSpread=d.ivRvSpread, price=b.price?.price||0;
+  const fractals=b.fractals||{supports:[],resistances:[]};
+  const funding=deriv?.funding, oi=deriv?.oi, cvd=deriv?.cvd, skew=d.skew||{}, maxPain=d.maxPain;
+
+  // ── 全局否决 ──
+  const gv = [];
+  if (ivRvSpread < 0) gv.push({severity:'red', tag:'负期望', reason:`IV(${d.iv}%)<RV(${d.rv}%)，期权折价`, action:'空仓'});
+  if (m?.hasUrgent) { const n=(m.events||[]).filter(e=>e.isUrgent&&e.impact==='high').map(e=>e.name).join('、'); gv.push({severity:'yellow', tag:'宏观风险', reason:`距 ${n} 不足24h`, action:'仅极保守单'}); }
+  if (bb.percentile<5 && adx.value>30 && adx.trend==='rising') gv.push({severity:'red', tag:'单边爆发', reason:`BB极低+ADX=${adx.value}↑`, action:'暂停'});
+  const hasRed=gv.some(v=>v.severity==='red'), hasYellow=gv.some(v=>v.severity==='yellow');
+
+  // ── 通用评分工具 ──
+  function gradeFromScore(s, vetoed) {
+    if (vetoed) return {grade:'🚫 熔断', apy:'0%', color:'red'};
+    if (hasRed) return {grade:'⛔ 全局停止', apy:'0%', color:'red'};
+    if (hasYellow) return {grade:'⚠ 降级', apy:'5-10%', color:'yellow'};
+    if (s>=80) return {grade:'🟢 强烈推荐', apy:'20-30%', color:'green'};
+    if (s>=60) return {grade:'🟢 推荐', apy:'15-20%', color:'green'};
+    if (s>=40) return {grade:'🟡 一般', apy:'10-15%', color:'yellow'};
+    return {grade:'🔴 不推荐', apy:'5-10%', color:'red'};
+  }
+  function calcStrike(s, dir, vetoed) {
+    if (vetoed||hasRed) return {pct:0, price:0};
+    let pct;
+    if (hasYellow) pct=Math.max(10, atr.safe15x*1.5);
+    else if (s>=80) pct=atr.pct;
+    else if (s>=60) pct=atr.safe15x;
+    else if (s>=40) pct=atr.safe15x*1.3;
+    else pct=atr.safe15x*1.6;
+    pct=Math.round(pct*10)/10;
+    return { pct, price: Math.round(price*(dir==='put'? 1-pct/100 : 1+pct/100)) };
   }
 
-  const atr = b.technicals.atr;
-  const bb = b.technicals.bb;
-  const adx = b.technicals.adx;
-  const ivRvSpread = d.ivRvSpread;
-  const currentPrice = b.price?.price || 0;
+  // ═══ 📉 低买评分 (Sell Put) ═══
+  let ps=0; const pf=[], pa=[];
 
-  // ═══════════════════════════════════════════════
-  // 第一阶段: 一票否决 (Hard Constraints / Vetoes)
-  // 只要触发任意一条，直接输出红灯或黄灯降级
-  // ═══════════════════════════════════════════════
-  const vetoes = [];
+  // 1. 下方支撑密度 (15)
+  const nSup=fractals.supports.filter(s=>Math.abs(s.pct)<8).length;
+  if(nSup>=3){ps+=15;pf.push({n:'下方支撑密集',s:15,m:15,d:`${nSup}个`});}
+  else if(nSup>=2){ps+=10;pf.push({n:'下方支撑',s:10,m:15});}
+  else if(nSup>=1){ps+=5;pf.push({n:'支撑稀疏',s:5,m:15});}
+  else{pf.push({n:'无支撑⚠',s:0,m:15});pa.push({level:'warn',msg:'下方无分形支撑'});}
 
-  // 否决1: IV < RV → 红灯
-  if (ivRvSpread < 0) {
-    vetoes.push({
-      severity: 'red',
-      tag: '负期望',
-      reason: `IV (${d.iv}%) < RV (${d.rv}%)，期权在折价卖，承担风险无溢价补偿`,
-      action: '空仓，转入稳定币借贷协议赚取无风险收益',
-    });
-  }
+  // 2. 多头清算海绵 (15)
+  const longL=(liqData?.zones||[]).filter(z=>z.side==='long'&&z.price<price&&z.price>price*0.92).length;
+  if(longL>=3){ps+=15;pf.push({n:'清算海绵厚',s:15,m:15,d:`${longL}簇`});}
+  else if(longL>=1){ps+=8;pf.push({n:'部分缓冲',s:8,m:15});}
+  else pf.push({n:'缓冲不足',s:0,m:15});
 
-  // 否决2: 宏观事件 24h 内 → 黄灯
-  if (m && m.hasUrgent && m.urgentCount > 0) {
-    const urgentNames = (m.events || []).filter(e => e.isUrgent && e.impact === 'high')
-      .map(e => `${e.name}(${e.countdown})`).join('、');
-    vetoes.push({
-      severity: 'yellow',
-      tag: '宏观风险',
-      reason: `距 ${urgentNames} 不足24h，数据公布瞬间将出现无序宽幅震荡`,
-      action: '仅允许现价±10%以外、年化5%的极保守单，或空仓',
-    });
-  }
+  // 3. 负费率/做空拥挤 (15)
+  if(funding?.annualized<-20){ps+=15;pf.push({n:'极度负费率(反转)',s:15,m:15,d:`${funding.annualized.toFixed(0)}%`});}
+  else if(funding?.annualized<-5){ps+=10;pf.push({n:'负费率',s:10,m:15});}
+  else if(funding?.annualized<15){ps+=7;pf.push({n:'费率正常',s:7,m:15});}
+  else if(funding?.annualized>50){ps+=0;pf.push({n:'⚠多头过热',s:0,m:15,d:`${funding.annualized.toFixed(0)}%`});pa.push({level:'danger',msg:`资金费率${funding.annualized.toFixed(0)}%极端`});}
+  else{ps+=3;pf.push({n:'费率偏高',s:3,m:15});}
 
-  // 否决3: BB极度收窄 + ADX突破30 → 红灯
-  if (bb.percentile < 5 && adx.value > 30 && adx.trend === 'rising') {
-    vetoes.push({
-      severity: 'red',
-      tag: '单边爆发',
-      reason: `布林带处于5%极低分位 (${bb.percentile}%) 且 ADX=${adx.value} 向上发散，单边趋势正在成型`,
-      action: '暂停交易，等待趋势确立后再做顺势单边双币赢',
-    });
-  } else if (bb.squeeze) {
-    vetoes.push({
-      severity: 'yellow',
-      tag: '波动压缩',
-      reason: `布林带极度收窄 (宽度${bb.width}%, 百分位${bb.percentile}%)，即将突破`,
-      action: '降级至年化5-10%，执行价放极宽',
-    });
-  }
+  // 4. Put Skew溢价 (15)
+  const putPrem=(skew.putIV||0)-(skew.callIV||0);
+  if(putPrem>8){ps+=15;pf.push({n:'Put高溢价',s:15,m:15,d:`+${putPrem.toFixed(1)}%`});}
+  else if(putPrem>3){ps+=10;pf.push({n:'Put偏度正常',s:10,m:15});}
+  else{ps+=5;pf.push({n:'Put偏度平淡',s:5,m:15});}
 
-  // 否决4: 资金费率极端 → 黄灯
-  if (deriv && deriv.funding && deriv.funding.isExtreme) {
-    vetoes.push({
-      severity: 'yellow',
-      tag: '杠杆过热',
-      reason: `资金费率年化 ${deriv.funding.annualized}% (>50%)，多头极度拥挤，随时踩踏`,
-      action: '低买执行价必须放极深 (现价-10%)，或暂停',
-    });
-  }
+  // 5. IV溢价 (20)
+  if(ivRvSpread>=15){ps+=20;pf.push({n:'IV溢价丰富',s:20,m:20,d:`+${ivRvSpread}%`});}
+  else if(ivRvSpread>=8){ps+=15;pf.push({n:'IV溢价充足',s:15,m:20});}
+  else if(ivRvSpread>=3){ps+=8;pf.push({n:'IV溢价一般',s:8,m:20});}
+  else{ps+=3;pf.push({n:'IV溢价薄弱',s:3,m:20});}
 
-  // 否决5: OI/市值极端 → 黄灯
-  if (deriv && deriv.oi && deriv.oi.isHighOI) {
-    vetoes.push({
-      severity: 'yellow',
-      tag: '杠杆堆积',
-      reason: `OI/市值占比 ${deriv.oi.oiMarketCapRatio}% (>3.5%)，杠杆风暴即将来临`,
-      action: '降低仓位或只接年化5%的极低风险单',
-    });
-  }
+  // 6. 震荡环境 (20)
+  if(adx.value<20){ps+=20;pf.push({n:'深度震荡',s:20,m:20});}
+  else if(adx.value<25&&adx.trend!=='rising'){ps+=14;pf.push({n:'震荡',s:14,m:20});}
+  else if(adx.value<25){ps+=8;pf.push({n:'酝酿突破⚡',s:8,m:20,d:`ADX=${adx.value}↑`});pa.push({level:'warn',msg:`ADX=${adx.value}距25仅差${(25-adx.value).toFixed(1)}且上升`});}
+  else if(adx.value<30){ps+=4;pf.push({n:'趋势过渡',s:4,m:20});}
+  else{ps+=0;pf.push({n:'⚠强趋势',s:0,m:20});}
 
-  // 判断否决结果
-  const hasRedVeto = vetoes.some(v => v.severity === 'red');
-  const hasYellowVeto = vetoes.some(v => v.severity === 'yellow');
+  // Max Pain低买提示
+  if(maxPain?.direction==='below'&&Math.abs(maxPain.distPct)<3) pa.push({level:'danger',msg:`Max Pain $${maxPain.strike.toLocaleString()} 在下方仅${maxPain.distPct}%，低买执行价须低于此`});
 
-  if (hasRedVeto) {
-    const mainVeto = vetoes.find(v => v.severity === 'red');
-    return {
-      signal: 'red',
-      level: '🔴 红灯停止交易',
-      score: 0,
-      targetAPY: '0%',
-      strikeDist: '∞',
-      bottleneck: `【${mainVeto.tag}】${mainVeto.reason}`,
-      bottleneckAction: mainVeto.action,
-      positives: [],
-      vetoes,
-      alerts: vetoes.map(v => ({ level: v.severity === 'red' ? 'danger' : 'warn', module: v.tag, msg: v.reason })),
-      factors: {},
-      reasons: vetoes.map(v => `⛔ [${v.tag}] ${v.reason}`),
-      advice: mainVeto.action,
-    };
-  }
+  ps=Math.min(100,ps);
 
-  if (hasYellowVeto) {
-    const mainVeto = vetoes.find(v => v.severity === 'yellow');
-    const vetoStrikeDist = Math.max(8, atr.safe15x * 1.5);
-    const vetoLow = currentPrice > 0 ? Math.round(currentPrice * (1 - vetoStrikeDist / 100)) : 0;
-    const vetoHigh = currentPrice > 0 ? Math.round(currentPrice * (1 + vetoStrikeDist / 100)) : 0;
-    return {
-      signal: 'yellow',
-      level: '🟡 黄灯降级交易',
-      score: 0,
-      targetAPY: '5-10%',
-      strikeDist: `${vetoStrikeDist.toFixed(0)}%`,
-      strikeAbsolute: { low: vetoLow, high: vetoHigh, onlyLow: false },
-      bottleneck: `【${mainVeto.tag}】${mainVeto.reason}`,
-      bottleneckAction: mainVeto.action,
-      positives: [],
-      vetoes,
-      alerts: vetoes.map(v => ({ level: v.severity === 'red' ? 'danger' : 'warn', module: v.tag, msg: v.reason })),
-      factors: {},
-      reasons: vetoes.map(v => `⚠ [${v.tag}] ${v.reason}`),
-      advice: currentPrice > 0
-        ? `${mainVeto.action}。低买 < $${vetoLow.toLocaleString()} · 高卖 > $${vetoHigh.toLocaleString()} (±${vetoStrikeDist.toFixed(0)}%)`
-        : mainVeto.action,
-    };
-  }
+  // ═══ 📈 高卖评分 (Sell Call) ═══
+  let cs=0; const cf=[], cv=[], ca=[];
 
-  // ═══════════════════════════════════════════════
-  // 第二阶段: 权重打分 (满分100，决定年化目标)
-  // 通过一票否决 = 绿灯，但要决定进攻强度
-  // ═══════════════════════════════════════════════
-  const factors = {};
-  const alerts = []; // 底层警报透传
+  // 高卖一票否决
+  if(mstrData?.latestOffering?.isActive) { cv.push({tag:'MSTR买入周期',reason:'MSTR正在融资购BTC，持续现货买盘'}); ca.push({level:'danger',msg:'MSTR融资买入中，高卖熔断'}); }
+  const shortL=(liqData?.zones||[]).filter(z=>z.side==='short'&&z.price>price&&z.price<price*1.08).length;
+  if(shortL>=3) { cv.push({tag:'空头清算陷阱',reason:`上方${shortL}个清算簇，做市商可能拉爆`}); ca.push({level:'danger',msg:`上方${shortL}个空头清算簇`}); }
+  const callVetoed=cv.length>0;
 
-  // 因子1: 波动率溢价 (权重40%) — IV/RV Spread
-  let volScore = 0;
-  if (ivRvSpread >= 20) volScore = 40;
-  else if (ivRvSpread >= 15) volScore = 35;
-  else if (ivRvSpread >= 10) volScore = 30;
-  else if (ivRvSpread >= 5) volScore = 20;
-  else volScore = 10;
-  factors.volatility = { score: volScore, max: 40, detail: `IV-RV=${ivRvSpread}%` };
+  // 1. 上方阻力 (15)
+  const nRes=fractals.resistances.filter(r=>Math.abs(r.pct)<8).length;
+  if(nRes>=3){cs+=15;cf.push({n:'阻力沉重',s:15,m:15,d:`${nRes}个`});}
+  else if(nRes>=2){cs+=10;cf.push({n:'有阻力',s:10,m:15});}
+  else if(nRes>=1){cs+=5;cf.push({n:'阻力稀疏',s:5,m:15});}
+  else{cf.push({n:'无阻力⚠',s:0,m:15});ca.push({level:'warn',msg:'上方无阻力，卖飞风险高'});}
 
-  // 因子2: 市场震荡 (权重30%) — ADX + BB
-  // ★ ADX 缓冲带: 20-25且上升 = 酝酿突破期，不再视为安全震荡
-  let rangeScore = 0;
-  if (adx.value < 20) {
-    rangeScore += 20; // 真正的印钞机震荡
-  } else if (adx.value < 25 && adx.trend !== 'rising') {
-    rangeScore += 15; // 低ADX但没在上升，尚可
-  } else if (adx.value < 25 && adx.trend === 'rising') {
-    rangeScore += 8;  // ★ 酝酿突破: ADX 20-25 且上升
-    alerts.push({
-      level: 'warn', module: 'M2',
-      msg: `ADX=${adx.value} 距警戒线25仅差 ${(25-adx.value).toFixed(1)} 且上升中，趋势正在酝酿，建议缩短期限至24h或降低年化`,
-    });
-  } else if (adx.value < 28) {
-    rangeScore += 5;
-    alerts.push({ level: 'warn', module: 'M2', msg: `ADX=${adx.value} 进入过渡区间，趋势可能正在形成` });
-  } else {
-    rangeScore += 2;
-    alerts.push({ level: 'danger', module: 'M2', msg: `ADX=${adx.value} 趋势已确立，双币赢被击穿风险高` });
-  }
-  // BB 正常范围加分
-  if (bb.percentile > 30 && bb.percentile < 70) rangeScore += 10;
-  else if (bb.percentile > 15) rangeScore += 5;
-  else {
-    alerts.push({ level: 'warn', module: 'M2', msg: `布林带宽度处于 ${bb.percentile}% 低分位，波动可能骤增` });
-  }
-  rangeScore = Math.min(30, rangeScore);
-  factors.range = { score: rangeScore, max: 30, detail: `ADX=${adx.value}(${adx.trend}), BB=${bb.percentile}%分位` };
+  // 2. CVD背离=假突破 (20)
+  if(cvd?.divergence==='bearish_divergence'){cs+=20;cf.push({n:'假突破(CVD背离)',s:20,m:20,d:'合约拉盘+现货抛售'});}
+  else if(cvd?.divergence==='aligned'&&cvd.spotTrend==='selling'){cs+=12;cf.push({n:'现货在卖',s:12,m:20});}
+  else if(cvd?.divergence==='aligned'){cs+=5;cf.push({n:'上涨真实',s:5,m:20});ca.push({level:'warn',msg:'CVD一致，上涨有真实动能'});}
+  else{cs+=8;cf.push({n:'CVD中性',s:8,m:20});}
 
-  // 因子3: 微观结构安全边际 (权重30%)
-  let safetyScore = 0;
-  if (atr.safe15x >= 5) safetyScore += 10;
-  else if (atr.safe15x >= 3.5) safetyScore += 7;
-  else safetyScore += 3;
-  // 分形防护
-  const fractals = b.fractals;
-  if (fractals.supports.length >= 2 && fractals.resistances.length >= 2) safetyScore += 8;
-  else if (fractals.supports.length >= 1) safetyScore += 4;
-  // CVD 一致性
-  if (deriv && deriv.cvd && deriv.cvd.divergence === 'aligned') {
-    safetyScore += 7;
-  } else if (deriv && deriv.cvd && deriv.cvd.divergence === 'bearish_divergence') {
-    safetyScore += 2;
-    alerts.push({
-      level: 'danger', module: 'M6-CVD',
-      msg: '合约现货 CVD 背离：合约拉盘但现货在抛售，上涨极脆弱，典型假突破信号',
-    });
-  } else if (deriv && deriv.cvd && deriv.cvd.divergence === 'bullish_divergence') {
-    safetyScore += 5;
-    alerts.push({ level: 'info', module: 'M6-CVD', msg: '现货吸筹但合约做空，存在潜在轧空机会' });
-  } else {
-    safetyScore += 5;
-  }
-  // 资金费率健康
-  if (deriv && deriv.funding && Math.abs(deriv.funding.annualized) < 15) {
-    safetyScore += 5;
-  } else if (deriv && deriv.funding) {
-    safetyScore += 2;
-    if (deriv.funding.annualized > 30) {
-      alerts.push({ level: 'warn', module: 'M6-FR', msg: `资金费率年化 ${deriv.funding.annualized.toFixed(0)}%，多头拥挤` });
-    }
-  }
-  safetyScore = Math.min(30, safetyScore);
-  factors.safety = { score: safetyScore, max: 30, detail: `ATR=${atr.safe15x}%, CVD=${deriv?.cvd?.divergence || 'N/A'}` };
+  // 3. 费率极度狂热(对高卖利好) (15)
+  if(funding?.annualized>50){cs+=15;cf.push({n:'多头极拥挤',s:15,m:15,d:`${funding.annualized.toFixed(0)}%`});}
+  else if(funding?.annualized>25){cs+=10;cf.push({n:'多头偏拥挤',s:10,m:15});}
+  else if(funding?.annualized>10){cs+=5;cf.push({n:'费率正常',s:5,m:15});}
+  else{cs+=0;cf.push({n:'费率低/负',s:0,m:15});}
 
-  const totalScore = volScore + rangeScore + safetyScore;
+  // 4. Call Skew FOMO (15)
+  const callPrem=(skew.callIV||0)-(skew.putIV||0);
+  if(callPrem>5){cs+=15;cf.push({n:'Call FOMO溢价',s:15,m:15,d:`+${callPrem.toFixed(1)}%`});}
+  else if(callPrem>0){cs+=8;cf.push({n:'Call偏度轻微',s:8,m:15});}
+  else{cs+=3;cf.push({n:'无Call溢价',s:3,m:15});}
 
-  // ═══════════════════════════════════════════════
-  // 第三阶段: 信号冲突检测 (Divergence Alert)
-  // 当底层因子出现严重多空互斥时，强制拉宽执行价
-  // ═══════════════════════════════════════════════
-  let conflictPenalty = false;
-  let conflictMsg = '';
+  // 5. IV溢价 (15)
+  if(ivRvSpread>=15){cs+=15;cf.push({n:'IV溢价丰富',s:15,m:15});}
+  else if(ivRvSpread>=8){cs+=10;cf.push({n:'IV溢价充足',s:10,m:15});}
+  else if(ivRvSpread>=3){cs+=6;cf.push({n:'IV溢价一般',s:6,m:15});}
+  else{cs+=2;cf.push({n:'IV溢价薄弱',s:2,m:15});}
 
-  // 检测: CVD=假突破(利空) + MaxPain向上引力/MSTR利多 = 严重冲突
-  const cvdBearish = deriv?.cvd?.divergence === 'bearish_divergence';
-  const maxPainBullish = d.maxPain && d.maxPain.direction === 'above';
-  const mstrBullish = mstrData?.latestOffering?.isActive;
+  // 6. 震荡 (20)
+  if(adx.value<20){cs+=20;cf.push({n:'深度震荡',s:20,m:20});}
+  else if(adx.value<25&&adx.trend!=='rising'){cs+=14;cf.push({n:'震荡',s:14,m:20});}
+  else if(adx.value<25){cs+=8;cf.push({n:'酝酿突破',s:8,m:20});}
+  else if(adx.value<30){cs+=4;cf.push({n:'趋势过渡',s:4,m:20});}
+  else{cs+=0;cf.push({n:'⚠强趋势',s:0,m:20});}
 
-  if (cvdBearish && (maxPainBullish || mstrBullish)) {
-    conflictPenalty = true;
-    const bullSources = [];
-    if (maxPainBullish) bullSources.push(`Max Pain 在上方 $${d.maxPain.strike.toLocaleString()}`);
-    if (mstrBullish) bullSources.push('MSTR 持续买入');
-    conflictMsg = `多空信号严重冲突：CVD 显示假突破(利空)，但 ${bullSources.join(' + ')} (利多)。上涨是纯杠杆推动，极脆弱。`;
-    alerts.push({ level: 'danger', module: '冲突检测', msg: conflictMsg });
-  }
+  if(maxPain?.direction==='above'&&Math.abs(maxPain.distPct)<3) ca.push({level:'danger',msg:`Max Pain $${maxPain.strike.toLocaleString()} 在上方仅${maxPain.distPct}%，高卖须高于此`});
 
-  // 检测: 资金费率高+CVD背离 = 杠杆假繁荣
-  if (deriv?.funding?.annualized > 30 && cvdBearish) {
-    if (!conflictPenalty) {
-      conflictPenalty = true;
-      conflictMsg = `杠杆假繁荣：资金费率 ${deriv.funding.annualized.toFixed(0)}% 偏高 + 现货 CVD 抛售，上涨全靠合约撑，极不稳定。`;
-      alerts.push({ level: 'danger', module: '冲突检测', msg: conflictMsg });
-    }
-  }
+  cs=Math.min(100,cs);
 
-  // 生成正面因子列表
-  const positives = [];
-  if (ivRvSpread >= 10) positives.push(`IV溢价充足 (IV-RV=+${ivRvSpread}%)`);
-  if (adx.value < 20) positives.push(`ADX=${adx.value} 深度震荡，印钞机模式`);
-  else if (adx.value < 25 && adx.trend !== 'rising') positives.push(`ADX=${adx.value} 低位震荡`);
-  if (bb.percentile > 30 && bb.percentile < 70) positives.push(`布林带宽度正常`);
-  if (deriv?.cvd?.divergence === 'aligned') positives.push(`现货与合约方向一致`);
-  if (deriv?.funding && Math.abs(deriv.funding.annualized) < 15) positives.push(`资金费率健康`);
+  // ── 生成建议 ──
+  const pg=gradeFromScore(ps,false), cg=gradeFromScore(cs,callVetoed);
+  const pStrike=calcStrike(ps,'put',false), cStrike=calcStrike(cs,'call',callVetoed);
 
-  // 映射决策（冲突时强制降级执行价）
-  let targetAPY, strikeDist, level;
-  const baseStrike15 = atr.safe15x;
+  const topAdvice=[];
+  if(callVetoed) topAdvice.push(`高卖熔断: ${cv.map(v=>v.reason).join('; ')}`);
+  if(maxPain) topAdvice.push(`周五 Max Pain: $${maxPain.strike.toLocaleString()} (${maxPain.direction==='above'?'上方↑':'下方↓'} ${maxPain.distPct>0?'+':''}${maxPain.distPct}%)`);
 
-  if (conflictPenalty) {
-    // 冲突: 分数不变，但执行价强制拉宽，且只建议低买
-    const conflictStrike = Math.max(8, baseStrike15 * 1.4);
-    if (totalScore > 80) {
-      targetAPY = '15-20%';
-      level = '🟡 绿灯但有冲突';
-    } else if (totalScore > 50) {
-      targetAPY = '10-15%';
-      level = '🟡 绿灯但有冲突';
-    } else {
-      targetAPY = '5-10%';
-      level = '🟡 绿灯但有冲突';
-    }
-    strikeDist = `${conflictStrike.toFixed(1)}%`;
-  } else if (totalScore > 80) {
-    targetAPY = '20-30%';
-    strikeDist = `${atr.pct.toFixed(1)}%`;
-    level = '🟢 绿灯最佳窗口';
-  } else if (totalScore > 50) {
-    targetAPY = '15-20%';
-    strikeDist = `${baseStrike15.toFixed(1)}%`;
-    level = '🟢 绿灯可做';
-  } else {
-    targetAPY = '10-15%';
-    strikeDist = `${(baseStrike15 * 1.3).toFixed(1)}%`;
-    level = '🟢 绿灯保守';
-  }
-
-  // 方向建议
-  let directionHint = '';
-  if (conflictPenalty) {
-    directionHint = '⚠ 只做极深低买 (Sell Put)，不碰高卖';
-  } else if (mstrData?.latestOffering?.isActive) {
-    directionHint = '偏向低买 (MSTR持续买入现货)';
-  }
-  if (mstrData?.navPremium?.multiple > 2.0) {
-    directionHint = '避免高卖 (MSTR NAV极度FOMO)';
-  }
-  if (cvdBearish && !conflictPenalty) {
-    directionHint += (directionHint ? ' · ' : '') + '做高卖胜率高 (CVD假突破)';
-  }
-
-  // Max Pain 提示
-  let maxPainHint = '';
-  if (d.maxPain) {
-    const mpDir = d.maxPain.direction === 'above' ? '上方↑价格被向上吸引' : '下方↓价格被向下拽';
-    maxPainHint = `周五 Max Pain: $${d.maxPain.strike.toLocaleString()} (${mpDir}, 距现价${d.maxPain.distPct > 0 ? '+' : ''}${d.maxPain.distPct}%)`;
-  }
-
-  // Compute absolute strike prices for the advice
-  const strikeDistNum = parseFloat(strikeDist) || 0;
-  const lowStrikePrice = currentPrice > 0 ? Math.round(currentPrice * (1 - strikeDistNum / 100)) : 0;
-  const highStrikePrice = currentPrice > 0 ? Math.round(currentPrice * (1 + strikeDistNum / 100)) : 0;
-  const onlyLowBuy = conflictPenalty || (directionHint && (directionHint.includes('只做') || directionHint.includes('低买') || directionHint.includes('避免高卖')));
-
-  let adviceText;
-  if (onlyLowBuy && currentPrice > 0) {
-    adviceText = `建议年化 ${targetAPY}，仅做低买 (Sell Put)，挂单价 < $${lowStrikePrice.toLocaleString()} (距现价>${strikeDistNum}%)。${directionHint ? directionHint + '。' : ''}`;
-  } else if (currentPrice > 0) {
-    adviceText = `建议年化 ${targetAPY}。低买挂单 < $${lowStrikePrice.toLocaleString()} · 高卖挂单 > $${highStrikePrice.toLocaleString()} (±${strikeDistNum}%)。${directionHint ? directionHint + '。' : ''}`;
-  } else {
-    adviceText = `建议年化 ${targetAPY}，执行价距离现价 ±${strikeDist} 以外。`;
+  // 宽跨式检测
+  let strangle=null;
+  if(!hasRed&&!hasYellow&&!callVetoed&&ps>=60&&cs>=60) {
+    strangle={recommended:true, putStrike:pStrike.price, callStrike:cStrike.price,
+      note:`双向收租: 低买<$${pStrike.price.toLocaleString()} 且 高卖>$${cStrike.price.toLocaleString()}`};
   }
 
   return {
-    signal: conflictPenalty ? 'yellow' : 'green',
-    level,
-    score: totalScore,
-    targetAPY,
-    strikeDist,
-    strikeAbsolute: { low: lowStrikePrice, high: highStrikePrice, onlyLow: !!onlyLowBuy },
-    bottleneck: conflictPenalty ? conflictMsg : null,
-    bottleneckAction: conflictPenalty ? '执行价强制拉宽，仅做极深低买' : null,
-    positives,
-    vetoes: [],
-    alerts,
-    factors,
-    directionHint,
-    maxPainHint,
-    reasons: [
-      `综合评分 ${totalScore}/100: 波动率${volScore}/40 + 震荡${rangeScore}/30 + 安全${safetyScore}/30`,
-      ...positives.map(p => `✅ ${p}`),
-      ...alerts.filter(a => a.level === 'danger').map(a => `🚨 [${a.module}] ${a.msg}`),
-      directionHint ? `📊 ${directionHint}` : null,
-      maxPainHint ? `🎯 ${maxPainHint}` : null,
-    ].filter(Boolean),
-    advice: adviceText,
+    sellPut: { score:ps, ...pg, factors:pf, vetoes:[...gv], alerts:pa, strike:pStrike },
+    sellCall: { score:cs, ...cg, factors:cf, vetoes:[...gv,...cv], callVetoed, alerts:ca, strike:cStrike },
+    strangle, globalVetoes:gv, topAdvice,
+    maxPainHint: maxPain ? `Max Pain: $${maxPain.strike.toLocaleString()} (${maxPain.direction==='above'?'上方':'下方'} ${maxPain.distPct>0?'+':''}${maxPain.distPct}%)` : null,
+    meta: { signal: hasRed?'red':hasYellow?'yellow':(callVetoed&&ps<40)?'yellow':'green', currentPrice:price },
   };
 }
 
-// ─── API 路由 ───
-
-/** 获取全部数据（前端一次性拉取） */
+// ─── API ───
 app.get('/api/dashboard', (req, res) => {
-  const binanceData = cache.get('binance');
-  const deribitData = cache.get('deribit');
-  const liqData = cache.get('liquidation');
-  const macroData = cache.get('macro');
-  const mstrData = cache.get('mstr');
-  const derivData = cache.get('derivatives');
-  const decision = cache.get('decision');
-  const meta = cache.get('_meta');
-
-  if (!binanceData) {
-    return res.status(503).json({ error: '数据尚未就绪，请稍后重试', meta });
-  }
-
+  const b=cache.get('binance'); if(!b) return res.status(503).json({error:'数据未就绪'});
   res.json({
-    price: binanceData.price,
-    volatility: deribitData || null,
-    technicals: binanceData.technicals,
-    fractals: binanceData.fractals,
-    liquidation: liqData || null,
-    macro: macroData || null,
-    mstr: mstrData || null,
-    derivatives: derivData || null,
-    decision: decision || null,
-    meta,
+    price:b.price, volatility:cache.get('deribit'), technicals:b.technicals, fractals:b.fractals,
+    liquidation:cache.get('liquidation'), macro:cache.get('macro'), mstr:cache.get('mstr'),
+    derivatives:cache.get('derivatives'), decision:cache.get('decision'), meta:cache.get('_meta'),
   });
 });
+app.get('/api/decision', (req,res) => res.json(cache.get('decision')||{meta:{signal:'yellow'}}));
+app.post('/api/refresh', async(req,res) => { try{await fetchAndCache();res.json({ok:true});}catch(e){res.status(500).json({error:e.message});} });
+app.get('/api/health', (req,res) => { const m=cache.get('_meta'); res.json({status:'ok',uptime:process.uptime(),lastRefresh:m?.lastRefresh}); });
+app.get('*', (req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-/** 单独获取决策信号 */
-app.get('/api/decision', (req, res) => {
-  const decision = cache.get('decision');
-  res.json(decision || { signal: 'yellow', score: 0, reasons: ['等待数据...'] });
-});
-
-/** 手动触发刷新 */
-app.post('/api/refresh', async (req, res) => {
-  try {
-    await fetchAndCache();
-    res.json({ ok: true, meta: cache.get('_meta') });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/** 健康检查 */
-app.get('/api/health', (req, res) => {
-  const meta = cache.get('_meta');
-  res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    lastRefresh: meta?.lastRefresh || null,
-  });
-});
-
-/** SPA fallback */
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// ─── 定时任务 ───
-// 每 5 分钟刷新一次（Binance + Deribit 数据变化频率适中）
-cron.schedule('*/5 * * * *', () => {
-  fetchAndCache().catch(err => console.error('[Cron] 刷新失败:', err));
-});
-
-// 宏观事件每小时检查一次即可
+// ─── Cron ───
+cron.schedule('*/5 * * * *', () => fetchAndCache().catch(e=>console.error('[Cron]',e)));
 cron.schedule('0 * * * *', () => {
-  macro.fetchAll()
-    .then(data => {
-      cache.set('macro', data);
-      // 重算决策
-      const decision = computeDecision();
-      cache.set('decision', decision);
-    })
-    .catch(err => console.error('[Cron] 宏观事件刷新失败:', err));
+  macro.fetchAll().then(d=>{cache.set('macro',d);cache.set('decision',computeDecision());}).catch(()=>{});
 });
 
-// ─── 启动 ───
 app.listen(PORT, async () => {
-  console.log(`\n🚀 BTC 双币赢决策终端已启动`);
-  console.log(`   地址: http://localhost:${PORT}`);
-  console.log(`   API:  http://localhost:${PORT}/api/dashboard`);
-  console.log(`   刷新周期: 每 5 分钟`);
-  console.log('');
-
-  // 首次启动立即拉取数据
+  console.log(`\n🚀 BTC 双币赢决策终端 v3 (双轨评分)`);
+  console.log(`   http://localhost:${PORT}\n`);
   await fetchAndCache();
 });
