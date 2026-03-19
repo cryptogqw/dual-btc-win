@@ -504,6 +504,28 @@ function renderTrafficLight(decision, data) {
       ${warnAlerts.map(a => `<div style="font-size:.75rem;color:var(--yellow);line-height:1.5;margin-bottom:2px">⚡ <strong>[${a.module}]</strong> ${a.msg}</div>`).join('')}
     </div>` : '';
 
+  // Compute absolute strike prices
+  const strikeDistNum = parseFloat(d.strikeDist) || 0;
+  const curPrice = data.price || 0;
+  const lowStrike = curPrice > 0 ? Math.round(curPrice * (1 - strikeDistNum / 100)) : 0;
+  const highStrike = curPrice > 0 ? Math.round(curPrice * (1 + strikeDistNum / 100)) : 0;
+
+  // Direction-aware display
+  const hint = (d.directionHint || '').toLowerCase();
+  const onlyLow = hint.includes('只做') || hint.includes('低买') || hint.includes('不碰高卖') || hint.includes('避免高卖');
+  const onlyHigh = hint.includes('只做高卖');
+
+  let strikeDisplay = '';
+  if (onlyLow && curPrice > 0) {
+    strikeDisplay = `低买挂单 < <strong style="color:var(--cyan)">$${fmt(lowStrike)}</strong> <span style="font-size:.75rem;color:var(--text-muted)">(>${strikeDistNum}%)</span>`;
+  } else if (onlyHigh && curPrice > 0) {
+    strikeDisplay = `高卖挂单 > <strong style="color:var(--cyan)">$${fmt(highStrike)}</strong> <span style="font-size:.75rem;color:var(--text-muted)">(>${strikeDistNum}%)</span>`;
+  } else if (curPrice > 0) {
+    strikeDisplay = `低买 < <strong style="color:var(--green)">$${fmt(lowStrike)}</strong> · 高卖 > <strong style="color:var(--red)">$${fmt(highStrike)}</strong> <span style="font-size:.75rem;color:var(--text-muted)">(±${strikeDistNum}%)</span>`;
+  } else {
+    strikeDisplay = `<strong style="color:var(--cyan)">±${d.strikeDist || 'N/A'}</strong>`;
+  }
+
   el.innerHTML = `
     <div class="signal-main ${d.signal}">
       <div class="signal-icon">${iconMap[d.signal] || '⚡'}</div>
@@ -512,9 +534,8 @@ function renderTrafficLight(decision, data) {
           <span>${d.level || '🟡 黄灯'}</span>
           <span style="font-size:.8rem;font-weight:400;color:var(--text-secondary)">|</span>
           <span style="font-size:.85rem;font-weight:400">建议年化：<strong style="color:var(--${d.signal === 'green' ? 'green' : d.signal})">${d.targetAPY || 'N/A'}</strong></span>
-          <span style="font-size:.8rem;font-weight:400;color:var(--text-secondary)">|</span>
-          <span style="font-size:.85rem;font-weight:400">执行价距离：<strong style="color:var(--cyan)">±${d.strikeDist || 'N/A'}</strong></span>
         </h2>
+        <div style="margin-top:6px;font-size:.88rem">${strikeDisplay}</div>
         ${insightHTML}
         ${alertsHTML}
         ${d.directionHint ? `<div style="margin-top:6px;font-size:.75rem;color:var(--orange)">📊 ${d.directionHint}</div>` : ''}
@@ -523,11 +544,11 @@ function renderTrafficLight(decision, data) {
       </div>
       <div class="signal-stats">
         <div class="signal-stat">
-          <label>${d.signal === 'green' ? '评分' : '状态'}</label>
-          <div class="val mono" style="color:var(--${d.signal})">${d.signal === 'green' ? d.score + '/100' : d.signal === 'red' ? '停止' : '降级'}</div>
+          <label>${d.signal === 'green' || d.signal === 'yellow' ? '评分' : '状态'}</label>
+          <div class="val mono" style="color:var(--${d.signal})">${d.score > 0 ? d.score + '/100' : d.signal === 'red' ? '停止' : '降级'}</div>
         </div>
         <div class="signal-stat">
-          <label>安全距离</label>
+          <label>ATR安全距</label>
           <div class="val mono" style="color:var(--cyan)">${fmtP(data.atr.safe15x)}</div>
         </div>
         <div class="signal-stat">
