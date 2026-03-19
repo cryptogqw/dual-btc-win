@@ -515,6 +515,24 @@ function renderTrafficLight(decision, data) {
       </div>` : ''}
 
       ${factorBarsHTML ? `<div style="margin-bottom:8px">${factorBarsHTML}</div>` : ''}
+
+      ${!vetoed && card.tenor ? `
+      <div style="margin-bottom:8px;border-top:1px solid var(--border);padding-top:8px">
+        <div style="font-size:.65rem;color:var(--text-muted);margin-bottom:6px;font-weight:600;letter-spacing:1px">期限 × APR 矩阵</div>
+        ${['h24','h48','h72'].map(k => {
+          const t = card.tenor[k]; if(!t) return '';
+          const label = k==='h24'?'24h':k==='h48'?'48h':'72h';
+          const statusColor = t.status.includes('推荐')?'var(--green)':t.status.includes('可做')?'var(--cyan)':t.status.includes('谨慎')||t.status.includes('降级')?'var(--yellow)':t.status.includes('防守')?'var(--yellow)':t.status.includes('禁止')||t.status.includes('不建议')?'var(--red)':'var(--text-muted)';
+          return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)10;font-size:.75rem">
+            <span class="mono" style="width:32px;font-weight:700;color:var(--text-secondary)">${label}</span>
+            <span style="width:70px;font-size:.65rem;color:${statusColor};font-weight:600">${t.status}</span>
+            <span class="mono" style="width:55px;color:var(--text-primary)">${t.apy}</span>
+            <span class="mono" style="flex:1;color:var(--cyan);text-align:right">${t.strike ? (side==='put'?'<':'>')+'$'+fmt(t.strike) : '—'}</span>
+            <span style="width:35px;text-align:right;font-size:.65rem;color:var(--text-muted)">${t.dist ? (side==='put'?'-':'+')+t.dist+'%' : ''}</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
       ${vetoHTML}
       ${alertsHTML}
     </div>`;
@@ -532,6 +550,36 @@ function renderTrafficLight(decision, data) {
     <div style="padding:10px 16px;background:linear-gradient(135deg,var(--green-bg),var(--cyan)08);border-radius:8px;margin-top:12px;border:1px solid var(--green)30">
       <div style="font-size:.8rem;font-weight:700;color:var(--green);margin-bottom:4px">🎯 宽跨式双卖推荐 (Sell Strangle)</div>
       <div style="font-size:.82rem;color:var(--text-secondary)">${d.strangle.note}</div>
+    </div>` : '';
+
+  // ── Position Advice (今日仓位建议) ──
+  const dayNames = ['日','一','二','三','四','五','六'];
+  const dayLabel = d.dayOfWeek !== undefined ? `周${dayNames[d.dayOfWeek]}` : '';
+  const positions = d.positionAdvice || [];
+  const posHTML = positions.length > 0 ? `
+    <div style="padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-top:12px">
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-primary);margin-bottom:10px">📅 今日是${dayLabel} — 低买仓位建议</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${positions.map(p => {
+          if (p.note && !p.detail) {
+            return `<div style="flex:1;min-width:200px;padding:10px;background:var(--bg-card-alt);border-radius:8px;text-align:center;color:var(--text-muted)">${p.note}</div>`;
+          }
+          const dt = p.detail || {};
+          const sc = dt.status?.includes('推荐')||dt.status?.includes('可做')?'var(--green)':dt.status?.includes('禁止')?'var(--red)':'var(--yellow)';
+          return `<div style="flex:1;min-width:200px;padding:10px;background:var(--bg-card-alt);border-radius:8px;border-left:3px solid ${sc}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span style="font-size:.8rem;font-weight:700;color:var(--text-primary)">🎯 ${p.label}</span>
+              <span style="font-size:.65rem;padding:2px 8px;border-radius:4px;background:${sc}20;color:${sc};font-weight:600">${p.tenor} ${dt.status||''}</span>
+            </div>
+            ${dt.apy && dt.apy !== '0%' ? `
+            <div style="display:flex;gap:8px;margin-bottom:4px">
+              <div style="flex:1;text-align:center"><div style="font-size:.6rem;color:var(--text-muted)">年化</div><div class="mono" style="font-size:.95rem;font-weight:700;color:${sc}">${dt.apy}</div></div>
+              <div style="flex:1;text-align:center"><div style="font-size:.6rem;color:var(--text-muted)">挂单价 <</div><div class="mono" style="font-size:.95rem;font-weight:700;color:var(--cyan)">${dt.strike?'$'+fmt(dt.strike):'—'}</div></div>
+            </div>
+            <div style="font-size:.7rem;color:var(--text-muted)">${dt.note||''}</div>` : `<div style="font-size:.8rem;color:var(--red);text-align:center;padding:8px 0">${dt.note||'禁止'}</div>`}
+          </div>`;
+        }).join('')}
+      </div>
     </div>` : '';
 
   // ── Top advice ──
@@ -552,6 +600,7 @@ function renderTrafficLight(decision, data) {
       ${renderCard('call', sc, '📈', '高卖 Sell Call', '--red')}
     </div>
     ${strangleHTML}
+    ${posHTML}
   `;
 }
 
