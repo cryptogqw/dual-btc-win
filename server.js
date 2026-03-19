@@ -145,6 +145,7 @@ function computeDecision() {
   const bb = b.technicals.bb;
   const adx = b.technicals.adx;
   const ivRvSpread = d.ivRvSpread;
+  const currentPrice = b.price?.price || 0;
 
   // ═══════════════════════════════════════════════
   // 第一阶段: 一票否决 (Hard Constraints / Vetoes)
@@ -236,12 +237,16 @@ function computeDecision() {
 
   if (hasYellowVeto) {
     const mainVeto = vetoes.find(v => v.severity === 'yellow');
+    const vetoStrikeDist = Math.max(8, atr.safe15x * 1.5);
+    const vetoLow = currentPrice > 0 ? Math.round(currentPrice * (1 - vetoStrikeDist / 100)) : 0;
+    const vetoHigh = currentPrice > 0 ? Math.round(currentPrice * (1 + vetoStrikeDist / 100)) : 0;
     return {
       signal: 'yellow',
       level: '🟡 黄灯降级交易',
       score: 0,
       targetAPY: '5-10%',
-      strikeDist: `${Math.max(8, atr.safe15x * 1.5).toFixed(0)}%`,
+      strikeDist: `${vetoStrikeDist.toFixed(0)}%`,
+      strikeAbsolute: { low: vetoLow, high: vetoHigh, onlyLow: false },
       bottleneck: `【${mainVeto.tag}】${mainVeto.reason}`,
       bottleneckAction: mainVeto.action,
       positives: [],
@@ -249,7 +254,9 @@ function computeDecision() {
       alerts: vetoes.map(v => ({ level: v.severity === 'red' ? 'danger' : 'warn', module: v.tag, msg: v.reason })),
       factors: {},
       reasons: vetoes.map(v => `⚠ [${v.tag}] ${v.reason}`),
-      advice: mainVeto.action,
+      advice: currentPrice > 0
+        ? `${mainVeto.action}。低买 < $${vetoLow.toLocaleString()} · 高卖 > $${vetoHigh.toLocaleString()} (±${vetoStrikeDist.toFixed(0)}%)`
+        : mainVeto.action,
     };
   }
 
@@ -428,17 +435,33 @@ function computeDecision() {
     maxPainHint = `周五 Max Pain: $${d.maxPain.strike.toLocaleString()} (${mpDir}, 距现价${d.maxPain.distPct > 0 ? '+' : ''}${d.maxPain.distPct}%)`;
   }
 
+  // Compute absolute strike prices for the advice
+  const strikeDistNum = parseFloat(strikeDist) || 0;
+  const lowStrikePrice = currentPrice > 0 ? Math.round(currentPrice * (1 - strikeDistNum / 100)) : 0;
+  const highStrikePrice = currentPrice > 0 ? Math.round(currentPrice * (1 + strikeDistNum / 100)) : 0;
+  const onlyLowBuy = conflictPenalty || (directionHint && (directionHint.includes('只做') || directionHint.includes('低买') || directionHint.includes('避免高卖')));
+
+  let adviceText;
+  if (onlyLowBuy && currentPrice > 0) {
+    adviceText = `建议年化 ${targetAPY}，仅做低买 (Sell Put)，挂单价 < $${lowStrikePrice.toLocaleString()} (距现价>${strikeDistNum}%)。${directionHint ? directionHint + '。' : ''}`;
+  } else if (currentPrice > 0) {
+    adviceText = `建议年化 ${targetAPY}。低买挂单 < $${lowStrikePrice.toLocaleString()} · 高卖挂单 > $${highStrikePrice.toLocaleString()} (±${strikeDistNum}%)。${directionHint ? directionHint + '。' : ''}`;
+  } else {
+    adviceText = `建议年化 ${targetAPY}，执行价距离现价 ±${strikeDist} 以外。`;
+  }
+
   return {
     signal: conflictPenalty ? 'yellow' : 'green',
     level,
     score: totalScore,
     targetAPY,
     strikeDist,
+    strikeAbsolute: { low: lowStrikePrice, high: highStrikePrice, onlyLow: !!onlyLowBuy },
     bottleneck: conflictPenalty ? conflictMsg : null,
     bottleneckAction: conflictPenalty ? '执行价强制拉宽，仅做极深低买' : null,
     positives,
     vetoes: [],
-    alerts,  // ★ 底层警报透传
+    alerts,
     factors,
     directionHint,
     maxPainHint,
@@ -449,7 +472,7 @@ function computeDecision() {
       directionHint ? `📊 ${directionHint}` : null,
       maxPainHint ? `🎯 ${maxPainHint}` : null,
     ].filter(Boolean),
-    advice: `建议年化 ${targetAPY}，执行价距离现价 ±${strikeDist} 以外。${directionHint ? directionHint + '。' : ''}`,
+    advice: adviceText,
   };
 }
 
