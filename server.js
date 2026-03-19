@@ -141,7 +141,16 @@ function computeDecision() {
   let cs=0; const cf=[], cv=[], ca=[];
 
   // 高卖一票否决
-  if(mstrData?.latestOffering?.isActive) { cv.push({tag:'MSTR买入周期',reason:'MSTR正在融资购BTC，持续现货买盘'}); ca.push({level:'danger',msg:'MSTR融资买入中，高卖熔断'}); }
+  // MSTR: 仅在24h内宣布购买BTC时才熔断，否则只是红色警示
+  const mstrLastBuy = mstrData?.lastPurchase?.date ? new Date(mstrData.lastPurchase.date) : null;
+  const mstrBuyWithin24h = mstrLastBuy && (Date.now() - mstrLastBuy.getTime()) < 24 * 3600000;
+  if (mstrBuyWithin24h) {
+    cv.push({tag:'MSTR 24h内购买',reason:`MSTR ${mstrLastBuy.toISOString().slice(0,10)} 刚购入 ${mstrData.lastPurchase.btcAmount?.toLocaleString()||''} BTC，现货买盘冲击中`});
+    ca.push({level:'danger',msg:'MSTR 24h内宣布购买BTC，高卖熔断'});
+  } else if (mstrData?.latestOffering?.isActive) {
+    // 不熔断，但作为红色警示 + 扣分
+    ca.push({level:'danger',msg:'MSTR正在执行融资计划购BTC，高卖需极度谨慎（非熔断）'});
+  }
   const shortL=(liqData?.zones||[]).filter(z=>z.side==='short'&&z.price>price&&z.price<price*1.08).length;
   if(shortL>=3) { cv.push({tag:'空头清算陷阱',reason:`上方${shortL}个清算簇，做市商可能拉爆`}); ca.push({level:'danger',msg:`上方${shortL}个空头清算簇`}); }
   const callVetoed=cv.length>0;
@@ -183,6 +192,14 @@ function computeDecision() {
   else if(adx.value<25){cs+=8;cf.push({n:'酝酿突破',s:8,m:20});}
   else if(adx.value<30){cs+=4;cf.push({n:'趋势过渡',s:4,m:20});}
   else{cs+=0;cf.push({n:'⚠强趋势',s:0,m:20});}
+
+  // 7. MSTR 现货买盘风险 (罚分项，非熔断)
+  if (mstrBuyWithin24h) {
+    // 已在否决区处理
+  } else if (mstrData?.latestOffering?.isActive) {
+    cs = Math.max(0, cs - 15);
+    cf.push({n:'⚠MSTR融资买入中', s:0, m:15, d:'罚-15分'});
+  }
 
   if(maxPain?.direction==='above'&&Math.abs(maxPain.distPct)<3) ca.push({level:'danger',msg:`Max Pain $${maxPain.strike.toLocaleString()} 在上方仅${maxPain.distPct}%，高卖须高于此`});
 
