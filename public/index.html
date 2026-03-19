@@ -72,6 +72,7 @@ background:linear-gradient(90deg,#fff 60%,var(--cyan));-webkit-background-clip:t
 .m3 .module-num{background:var(--blue-glow);color:var(--blue)}
 .m4 .module-num{background:var(--yellow-glow);color:var(--yellow)}
 .m5 .module-num{background:#f9731640;color:var(--orange)}
+.m6 .module-num{background:#3b82f640;color:var(--blue)}
 .module-title{font-size:.95rem;font-weight:700;letter-spacing:.5px}
 .module-subtitle{font-size:.7rem;color:var(--text-muted);margin-left:auto;font-family:'JetBrains Mono',monospace}
 
@@ -180,6 +181,7 @@ html{font-size:13px}
 .module{padding:16px}
 .calc-item .val{font-size:1rem}
 #module5 > div:last-child{grid-template-columns:1fr 1fr!important}
+#module6 > div:last-child{grid-template-columns:1fr 1fr!important}
 }
 
 /* ═══ Responsive: Mobile (≤600px) ═══ */
@@ -256,8 +258,9 @@ html{font-size:12px}
 /* Put/Call skew bar text */
 .metric-card div[style*="flex:"] {font-size:.6rem!important}
 
-/* M5 MSTR module stacks on mobile */
+/* M5/M6 modules stack on mobile */
 #module5 > div:last-child{grid-template-columns:1fr!important}
+#module6 > div:last-child{grid-template-columns:1fr!important}
 }
 
 /* ═══ Responsive: Small Mobile (≤380px) ═══ */
@@ -324,6 +327,8 @@ html{font-size:11px}
   <div class="module m4" id="module4"></div>
   <!-- Module 5: MSTR -->
   <div class="module m5" id="module5" style="grid-column:1/-1"></div>
+  <!-- Module 6: Derivatives -->
+  <div class="module m6" id="module6" style="grid-column:1/-1"></div>
 </div>
 
 <script>
@@ -377,47 +382,42 @@ function transformData(raw) {
     date: new Date(e.date),
   }));
 
-  return { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr: raw.mstr || null };
+  return {
+    price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events,
+    mstr: raw.mstr || null,
+    derivatives: raw.derivatives || null,
+    maxPain: raw.volatility?.maxPain || null,
+  };
 }
 
-// ─── Decision Logic ───
+// ─── Decision Logic (前端兜底，后端v2引擎优先) ───
 function computeDecision(data) {
-  let score = 0; // -10 to +10
-  let reasons = [];
+  const vetoes = [];
+  if (data.iv < data.rv) {
+    vetoes.push({ severity: 'red', tag: '负期望', reason: `IV(${data.iv.toFixed(1)}%) < RV(${data.rv.toFixed(1)}%)，期权折价` });
+  }
+  if (data.bb.squeeze) {
+    vetoes.push({ severity: 'yellow', tag: '波动压缩', reason: `布林带极度收窄 (${data.bb.width.toFixed(1)}%)` });
+  }
+  const hasRed = vetoes.some(v => v.severity === 'red');
+  const hasYellow = vetoes.some(v => v.severity === 'yellow');
 
-  // IV vs RV
-  if (data.iv > data.rv * 1.2) { score += 2; reasons.push('IV溢价丰富，卖权有正期望'); }
-  else if (data.iv < data.rv) { score -= 3; reasons.push('⚠ IV < RV，期权卖便宜了'); }
-  else { score += 1; reasons.push('IV略高于RV，溢价一般'); }
-
-  // BB Squeeze
-  if (data.bb.squeeze) { score -= 3; reasons.push('⚠ 布林带极度收窄，即将突破'); }
-  else if (data.bb.width < 6) { score -= 1; reasons.push('布林带偏窄，需留意'); }
-  else { score += 1; reasons.push('布林带正常，波动空间充足'); }
-
-  // ADX
-  if (data.adx.value < 25) { score += 2; reasons.push('ADX<25 震荡市，双币赢印钞机模式'); }
-  else if (data.adx.value > 30) { score -= 2; reasons.push('⚠ ADX>30 趋势已成，当心单边'); }
-  else { score += 0; reasons.push('ADX处于过渡区间'); }
-
-  // Macro events within 24h
-  const now = Date.now();
-  const urgentEvents = data.events.filter(e => (e.date.getTime() - now) < 86400000 && e.impact === 'high');
-  if (urgentEvents.length > 0) { score -= 3; reasons.push(`⚠ ${urgentEvents.length}个重大事件在24h内`); }
-
-  let signal, level, advice;
-  if (score >= 3) {
-    signal = 'green'; level = '🟢 绿灯';
-    advice = `建议选择距离现价 ${data.atr.safe15x.toFixed(1)}% 以外、年化 15-20% 区间的产品，优先执行分形低点外侧的"低买"。`;
-  } else if (score >= -1) {
-    signal = 'yellow'; level = '🟡 黄灯';
-    advice = `谨慎操作，建议年化降至 10-15%，执行价放远至 ${(data.atr.safe15x * 1.3).toFixed(1)}% 以外。仅选择分形关键位保护的方向。`;
-  } else {
-    signal = 'red'; level = '🔴 红灯';
-    advice = '今日暂停购买双币赢！资金保留在法币账户或稳定币活期理财赚取利息。风险远超收益。';
+  if (hasRed) {
+    return { signal: 'red', level: '🔴 红灯停止交易', score: 0, targetAPY: '0%', strikeDist: '∞',
+      bottleneck: vetoes[0].reason, positives: [], vetoes, factors: {},
+      reasons: vetoes.map(v => `⛔ [${v.tag}] ${v.reason}`), advice: '暂停交易' };
+  }
+  if (hasYellow) {
+    return { signal: 'yellow', level: '🟡 黄灯降级交易', score: 0, targetAPY: '5-10%',
+      strikeDist: `${(data.atr.safe15x * 1.5).toFixed(0)}%`,
+      bottleneck: vetoes[0].reason, positives: [], vetoes, factors: {},
+      reasons: vetoes.map(v => `⚠ [${v.tag}] ${v.reason}`), advice: '降级至5-10%年化' };
   }
 
-  return { signal, level, score, reasons, advice };
+  const score = Math.min(100, Math.max(0, 50 + (data.iv - data.rv) + (25 - data.adx.value)));
+  return { signal: 'green', level: '🟢 绿灯可做', score, targetAPY: score > 80 ? '20-30%' : '15-20%',
+    strikeDist: `${data.atr.safe15x.toFixed(1)}%`, bottleneck: null, positives: ['前端简易计算'],
+    vetoes: [], factors: {}, reasons: [`简易评分 ${score}`], advice: `建议年化 ${score > 80 ? '20-30%' : '15-20%'}` };
 }
 
 // ─── Render Functions ───
@@ -426,36 +426,76 @@ function fmtP(n) { return n.toFixed(2) + '%'; }
 
 function renderTrafficLight(decision, data) {
   const el = document.getElementById('trafficLight');
-  const levelMap = { green: '🟢 绿灯', yellow: '🟡 黄灯', red: '🔴 红灯' };
-  const labelMap = { green: '适合做双币赢', yellow: '谨慎操作', red: '暂停购买' };
+  const d = decision;
+  const isVeto = d.signal !== 'green';
   const iconMap = { green: '✓', yellow: '⚡', red: '✕' };
-  const level = decision.level || levelMap[decision.signal] || '🟡 黄灯';
+
+  // Score bar (only for green)
+  const scoreBarHTML = d.signal === 'green' && d.factors ? `
+    <div style="display:flex;gap:6px;margin-top:8px;font-size:.7rem">
+      <div style="flex:${d.factors.volatility?.score || 0};background:var(--purple);height:6px;border-radius:3px" title="波动率 ${d.factors.volatility?.score || 0}/40"></div>
+      <div style="flex:${d.factors.range?.score || 0};background:var(--cyan);height:6px;border-radius:3px" title="震荡 ${d.factors.range?.score || 0}/30"></div>
+      <div style="flex:${d.factors.safety?.score || 0};background:var(--green);height:6px;border-radius:3px" title="安全 ${d.factors.safety?.score || 0}/30"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text-muted);margin-top:2px;font-family:'JetBrains Mono',monospace">
+      <span>波动率 ${d.factors.volatility?.score || 0}/40</span>
+      <span>震荡 ${d.factors.range?.score || 0}/30</span>
+      <span>安全 ${d.factors.safety?.score || 0}/30</span>
+    </div>` : '';
+
+  // Bottleneck or positives
+  const insightHTML = isVeto
+    ? `<div style="margin-top:8px;padding:8px 12px;background:rgba(0,0,0,.3);border-radius:6px;border-left:3px solid var(--${d.signal})">
+        <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:4px">⚠ 降级原因 (The Bottleneck)</div>
+        <div style="font-size:.82rem;color:var(--text-primary);line-height:1.5">${d.bottleneck || ''}</div>
+      </div>`
+    : (d.positives && d.positives.length > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:rgba(16,185,129,.06);border-radius:6px;border-left:3px solid var(--green)">
+        <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:4px">✅ 优势因子</div>
+        <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.5">${d.positives.join(' · ')}</div>
+      </div>` : '');
+
   el.innerHTML = `
-    <div class="signal-main ${decision.signal}">
-      <div class="signal-icon">${iconMap[decision.signal] || '⚡'}</div>
-      <div class="signal-content">
-        <h2>今日决策：${level} ${labelMap[decision.signal] || '谨慎操作'}</h2>
-        <p>${decision.advice}</p>
+    <div class="signal-main ${d.signal}">
+      <div class="signal-icon">${iconMap[d.signal] || '⚡'}</div>
+      <div class="signal-content" style="flex:1;min-width:0">
+        <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>${d.level || '🟡 黄灯'}</span>
+          <span style="font-size:.8rem;font-weight:400;color:var(--text-secondary)">|</span>
+          <span style="font-size:.85rem;font-weight:400">建议年化：<strong style="color:var(--${d.signal === 'green' ? 'green' : d.signal})">${d.targetAPY || 'N/A'}</strong></span>
+          <span style="font-size:.8rem;font-weight:400;color:var(--text-secondary)">|</span>
+          <span style="font-size:.85rem;font-weight:400">执行价距离：<strong style="color:var(--cyan)">±${d.strikeDist || 'N/A'}</strong></span>
+        </h2>
+        ${insightHTML}
+        ${d.directionHint ? `<div style="margin-top:6px;font-size:.75rem;color:var(--orange)">📊 ${d.directionHint}</div>` : ''}
+        ${d.maxPainHint ? `<div style="margin-top:3px;font-size:.75rem;color:var(--purple)">🎯 ${d.maxPainHint}</div>` : ''}
+        ${scoreBarHTML}
       </div>
       <div class="signal-stats">
         <div class="signal-stat">
-          <label>综合评分</label>
-          <div class="val mono" style="color:var(--${decision.signal})">${decision.score > 0 ? '+' : ''}${decision.score}</div>
+          <label>${d.signal === 'green' ? '评分' : '状态'}</label>
+          <div class="val mono" style="color:var(--${d.signal})">${d.signal === 'green' ? d.score + '/100' : d.signal === 'red' ? '停止' : '降级'}</div>
         </div>
         <div class="signal-stat">
           <label>安全距离</label>
           <div class="val mono" style="color:var(--cyan)">${fmtP(data.atr.safe15x)}</div>
         </div>
         <div class="signal-stat">
-          <label>IV溢价</label>
+          <label>IV-RV</label>
           <div class="val mono" style="color:${data.iv > data.rv ? 'var(--green)' : 'var(--red)'}">${data.iv > data.rv ? '+' : ''}${(data.iv - data.rv).toFixed(1)}%</div>
         </div>
         <div class="signal-stat">
-          <label>市场状态</label>
+          <label>市场</label>
           <div class="val mono">${data.adx.value < 25 ? '震荡' : data.adx.value < 30 ? '过渡' : '趋势'}</div>
         </div>
       </div>
     </div>
+    ${d.vetoes && d.vetoes.length > 0 ? `
+    <div class="rec-box ${d.signal}" style="margin:0;flex:0 0 280px">
+      <div class="rec-title"><span class="pulse-dot ${d.signal}"></span> 否决门 (${d.vetoes.length})</div>
+      <div class="rec-body">
+        ${d.vetoes.map(v => `<div style="margin-bottom:6px"><span style="color:var(--${v.severity});font-weight:600">[${v.tag}]</span> ${v.reason}</div>`).join('')}
+      </div>
+    </div>` : ''}
   `;
 }
 
@@ -955,6 +995,158 @@ function renderModule5(data) {
   `;
 }
 
+// ─── Module 6: Derivatives Indicators ───
+function renderModule6(data) {
+  const el = document.getElementById('module6');
+  const dv = data.derivatives;
+  const mp = data.maxPain;
+
+  if (!dv) {
+    el.innerHTML = `
+      <div class="module-header">
+        <span class="module-num">M6</span>
+        <span class="module-title">衍生品指标</span>
+        <span class="module-subtitle">Funding · OI · CVD · Max Pain</span>
+      </div>
+      <div class="metric-card"><div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.85rem">衍生品数据加载中...</div></div>`;
+    return;
+  }
+
+  const f = dv.funding || {};
+  const oi = dv.oi || {};
+  const cvd = dv.cvd || {};
+
+  // Funding color
+  const fColor = Math.abs(f.annualized) > 50 ? 'var(--red)' : Math.abs(f.annualized) > 25 ? 'var(--yellow)' : 'var(--green)';
+  const fStatus = Math.abs(f.annualized) > 50 ? 'danger' : Math.abs(f.annualized) > 25 ? 'warn' : 'safe';
+  const fLabel = f.annualized > 50 ? '极度狂热' : f.annualized > 25 ? '偏热' : f.annualized < -10 ? '做空情绪浓' : '健康';
+
+  // OI color
+  const oiColor = oi.isHighOI ? 'var(--red)' : oi.oiMarketCapRatio > 2.5 ? 'var(--yellow)' : 'var(--green)';
+  const oiStatus = oi.isHighOI ? 'danger' : oi.oiMarketCapRatio > 2.5 ? 'warn' : 'safe';
+
+  // CVD
+  const cvdColor = cvd.divergence === 'bearish_divergence' ? 'var(--red)' : cvd.divergence === 'bullish_divergence' ? 'var(--cyan)' : 'var(--green)';
+  const cvdStatus = cvd.divergence === 'bearish_divergence' ? 'danger' : cvd.divergence === 'aligned' ? 'safe' : 'warn';
+
+  // Max Pain
+  const mpColor = mp ? (Math.abs(mp.distPct) > 5 ? 'var(--yellow)' : 'var(--red)') : 'var(--text-muted)';
+
+  el.innerHTML = `
+    <div class="module-header">
+      <span class="module-num">M6</span>
+      <span class="module-title">衍生品指标</span>
+      <span class="module-subtitle">杠杆 · 期权 · 微观结构</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+      <!-- 资金费率 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">加权资金费率</span>
+          <span class="metric-badge badge-${fStatus}">${fLabel}</span>
+        </div>
+        <div class="metric-value-row">
+          <span class="metric-value" style="color:${fColor}">${f.annualized?.toFixed(1) || '0'}%</span>
+          <span class="metric-sub">年化</span>
+        </div>
+        <div class="calc-grid" style="grid-template-columns:1fr 1fr">
+          <div class="calc-item"><label>原始费率</label><div class="val mono" style="font-size:.85rem">${(f.current * 100)?.toFixed(4) || '0'}%</div></div>
+          <div class="calc-item"><label>10日均值</label><div class="val mono" style="font-size:.85rem">${f.avg10d?.toFixed(1) || '0'}%</div></div>
+        </div>
+        <div class="metric-explain">
+          <strong>决策：</strong>${f.annualized > 50
+            ? '🔴 年化>50%，多头极度拥挤！随时踩踏，低买执行价必须放到 -10% 以下。'
+            : f.annualized > 25
+            ? '🟡 费率偏高，多头较拥挤，注意踩踏风险。'
+            : f.annualized < -10
+            ? '🟢 负费率，做空拥挤，轧空反弹概率较高。'
+            : '🟢 费率健康，多空均衡。'}
+        </div>
+      </div>
+
+      <!-- OI / 市值 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">OI / 市值占比</span>
+          <span class="metric-badge badge-${oiStatus}">${oi.isHighOI ? '⚠ 杠杆过高' : '正常'}</span>
+        </div>
+        <div class="metric-value-row">
+          <span class="metric-value" style="color:${oiColor}">${oi.oiMarketCapRatio?.toFixed(2) || '0'}%</span>
+        </div>
+        <div class="calc-grid" style="grid-template-columns:1fr 1fr">
+          <div class="calc-item"><label>OI 总量</label><div class="val cyan mono" style="font-size:.85rem">${oi.oiUSD ? '$' + (oi.oiUSD / 1e9).toFixed(1) + 'B' : 'N/A'}</div></div>
+          <div class="calc-item"><label>3日增速</label><div class="val mono" style="font-size:.85rem;color:${oi.oiGrowth3d > 10 ? 'var(--red)' : 'var(--text-secondary)'}">${oi.oiGrowth3d > 0 ? '+' : ''}${oi.oiGrowth3d?.toFixed(1) || '0'}%</div></div>
+        </div>
+        <div class="metric-explain">
+          <strong>决策：</strong>${oi.isHighOI
+            ? '🔴 OI/市值>3.5%，杠杆风暴即将来临！降低仓位或只接年化5%极保守单。'
+            : oi.oiGrowth3d > 15
+            ? '🟡 OI 3日暴增，杠杆快速堆积中，需密切关注。'
+            : '🟢 杠杆水平正常。'}
+        </div>
+      </div>
+
+      <!-- CVD -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">现货 vs 合约 CVD</span>
+          <span class="metric-badge badge-${cvdStatus}">${cvd.divergence === 'bearish_divergence' ? '⚠ 假突破' : cvd.divergence === 'bullish_divergence' ? '潜在轧空' : '一致'}</span>
+        </div>
+        <div style="display:flex;gap:12px;margin:8px 0">
+          <div style="flex:1;text-align:center">
+            <div style="font-size:.65rem;color:var(--text-muted)">现货 CVD</div>
+            <div class="mono" style="font-size:1.1rem;font-weight:700;color:${cvd.spotCVD > 0 ? 'var(--green)' : 'var(--red)'}">${cvd.spotCVD > 0 ? '买入' : '卖出'}</div>
+            <div class="mono" style="font-size:.75rem;color:var(--text-muted)">${cvd.spotCVD?.toFixed(1) || '0'} BTC</div>
+          </div>
+          <div style="flex:0 0 1px;background:var(--border)"></div>
+          <div style="flex:1;text-align:center">
+            <div style="font-size:.65rem;color:var(--text-muted)">合约 CVD</div>
+            <div class="mono" style="font-size:1.1rem;font-weight:700;color:${cvd.futuresCVD > 0 ? 'var(--green)' : 'var(--red)'}">${cvd.futuresCVD > 0 ? '买入' : '卖出'}</div>
+            <div class="mono" style="font-size:.75rem;color:var(--text-muted)">${cvd.futuresCVD?.toFixed(1) || '0'} BTC</div>
+          </div>
+        </div>
+        <div style="padding:6px 10px;border-radius:6px;background:${cvdColor}10;border-left:3px solid ${cvdColor};font-size:.78rem;color:var(--text-secondary)">
+          ${cvd.divergenceLabel || '数据计算中'}
+        </div>
+        <div class="metric-explain" style="margin-top:8px">
+          <strong>决策：</strong>${cvd.divergence === 'bearish_divergence'
+            ? '🔴 合约拉盘+现货抛售=典型假突破！做高卖(Sell Call)胜率极高，坚决不追高。'
+            : cvd.divergence === 'bullish_divergence'
+            ? '🟢 现货吸筹+合约做空=潜在轧空行情，可偏向低买。'
+            : '🟢 现货与合约一致，行情可信度高。'}
+          <div style="font-size:.65rem;color:var(--text-muted);margin-top:4px">窗口: ${cvd.window || '4h'}</div>
+        </div>
+      </div>
+
+      <!-- Max Pain -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">期权最大痛点 (Max Pain)</span>
+          <span class="metric-badge badge-${mp && Math.abs(mp.distPct) < 3 ? 'danger' : 'safe'}">${mp ? mp.expiry : 'N/A'}</span>
+        </div>
+        ${mp ? `
+        <div class="metric-value-row">
+          <span class="metric-value" style="color:var(--purple)">$${fmt(mp.strike)}</span>
+        </div>
+        <div class="calc-grid" style="grid-template-columns:1fr 1fr">
+          <div class="calc-item"><label>距现价</label><div class="val mono" style="color:${Math.abs(mp.distPct) < 3 ? 'var(--red)' : 'var(--green)'}">${mp.distPct > 0 ? '+' : ''}${mp.distPct}%</div></div>
+          <div class="calc-item"><label>方向</label><div class="val mono">${mp.direction === 'above' ? '现价下方 ↓' : '现价上方 ↑'}</div></div>
+          <div class="calc-item"><label>到期日</label><div class="val mono" style="font-size:.8rem">${mp.expiry}</div></div>
+          <div class="calc-item"><label>期权OI</label><div class="val mono" style="font-size:.8rem">${mp.totalOI?.toLocaleString() || 'N/A'}</div></div>
+        </div>
+        <div class="metric-explain">
+          <strong>周五策略：</strong>做市商有极强动力在交割前将价格向 Max Pain ($${fmt(mp.strike)}) 驱赶。
+          ${mp.direction === 'below'
+            ? `现价高于 Max Pain ${Math.abs(mp.distPct)}%，周五前价格可能下行。低买执行价不得高于 $${fmt(mp.strike)}！`
+            : `现价低于 Max Pain ${Math.abs(mp.distPct)}%，周五前价格可能上行。高卖执行价不得低于 $${fmt(mp.strike)}！`}
+        </div>
+        ` : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">Max Pain 数据加载中...</div>'}
+      </div>
+    </div>
+  `;
+}
+
 // ─── Draw IV/RV History Chart ───
 function drawIVRVChart(iv, rv) {
   const canvas = document.getElementById('ivrvChart');
@@ -1075,21 +1267,9 @@ function drawIVRVChart(iv, rv) {
   drawLabel(`RV ${rv.toFixed(0)}%`, rvEndX + 8, rvEndY, '#06b6d4');
 }
 
-// ─── Reasons Panel ───
+// ─── Reasons Panel (now integrated into traffic light) ───
 function renderReasons(decision) {
-  const trafficEl = document.getElementById('trafficLight');
-  const existingRec = trafficEl.querySelector('.rec-box');
-  if (existingRec) existingRec.remove();
-
-  const recHTML = `
-    <div class="rec-box ${decision.signal}" style="margin:0 0 0 0;flex:0 0 320px">
-      <div class="rec-title"><span class="pulse-dot ${decision.signal}"></span> 决策因子明细</div>
-      <div class="rec-body">
-        ${decision.reasons.map(r => `• ${r}<br>`).join('')}
-      </div>
-    </div>
-  `;
-  trafficEl.insertAdjacentHTML('beforeend', recHTML);
+  // Integrated into renderTrafficLight - no-op kept for compatibility
 }
 
 // ─── Main Refresh ───
@@ -1102,8 +1282,8 @@ async function refreshData() {
     return;
   }
 
-  const { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr } = transformData(raw);
-  const data = { price, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr };
+  const { price, change, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr, derivatives, maxPain } = transformData(raw);
+  const data = { price, iv, rv, skew, bb, adx, atr, fractals, liqZones, liqSource, events, mstr, derivatives, maxPain };
 
   // 使用后端计算的决策（更准确），回退到前端计算
   const decision = raw.decision || computeDecision(data);
@@ -1127,6 +1307,7 @@ async function refreshData() {
   renderModule3(data);
   renderModule4(data);
   renderModule5(data);
+  renderModule6(data);
 
   setTimeout(() => drawIVRVChart(iv, rv), 100);
   document.querySelector('.refresh-btn').textContent = '⟳ 刷新数据';
