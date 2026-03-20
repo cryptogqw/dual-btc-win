@@ -380,38 +380,136 @@ let currentLang = 'zh';
 const I18N = {
   zh: {
     refresh: '⟳ 刷新数据', refreshing: '⟳ 刷新中...', refreshFail: '⟳ 刷新失败', forceRefresh: '⟳ 强制刷新...',
-    sellPut: '低买 Sell Put', sellCall: '高卖 Sell Call',
-    suggestAPY: '建议年化', orderPrice: '挂单价', positionCap: '仓位上限',
-    tenorMatrix: '期限 × APR 矩阵', todayPlan: '今日执行方案',
+    sellPut: '📉 低买 Sell Put', sellCall: '📈 高卖 Sell Call',
+    suggestAPY: '建议年化', orderPrice: '挂单价', positionCap: '仓位上限', targetAPY: '目标年化',
+    tenorMatrix: '期限 × APR 矩阵', todayPlan: '执行方案',
     globalVeto: '⛔ 全局否决门触发', strangleRec: '🎯 宽跨式双卖推荐 (Sell Strangle)',
-    halt: '🚨禁止', defense: '⚠防守', conservative: '🟢可做', standard: '🟩推荐', offense: '❇️进攻',
-    fuse: '熔断', redHalt: '🔴 红灯暂停', yellowDef: '🟡 黄灯防守',
-    greenCons: '🟢 绿灯保守', greenStd: '🟩 绿灯标准', deepGreen: '❇️ 深绿进攻',
-    tierNote1: '绝对禁止，空仓规避', tierNote2: '预警模式，强制降级运行',
-    tierNote3: '环境温和，安全第一不追收益', tierNote4: '条件优良，正常执行策略', tierNote5: '极佳窗口，收割情绪溢价',
-    position: '建议仓位', dataAge: '前更新', weekend: '建议不做新单，资金保留在活期理财',
+    fuse: '熔断', position: '建议仓位', dataAge: '前更新',
+    weekend: '🏖️ 建议不做新单，资金保留在活期理财',
     tokyoTime: '东京', localTime: '本地',
-    dayNames: ['日','一','二','三','四','五','六'],
-    today: '今日是',
+    dayNames: ['日','一','二','三','四','五','六'], today: '今日是',
+    // Module headers
+    m1Title: '波动率与定价', m1Sub: '核心盈利指标',
+    m2Title: '市场状态与破位预警', m2Sub: '防斩断指标',
+    m3Title: '安全边际计算器', m3Sub: '动态点位指标',
+    m4Title: '微观结构与事件驱动', m4Sub: '扫雷指标',
+    m5Title: 'MSTR (Strategy) 追踪', m5Sub: 'BTC巨鲸信号',
+    m6Title: '衍生品指标', m6Sub: '杠杆 · 期权 · 微观结构',
+    // M1
+    ivVsRv: '隐含波动率 vs 实际波动率 (IV vs RV)',
+    ivRich: '溢价丰富', ivOk: '溢价偏低', ivDanger: '⚠ 倒挂',
+    decisionLogic: '决策逻辑',
+    ivLogic1: 'IV > RV 时做双币赢有正期望。当前 IV',
+    ivHigher: '高于', ivLower: '低于',
+    ivLogicGood: '溢价充足，是做双币赢的好时机。',
+    ivLogicMid: '溢价一般，建议适当降低年化目标。',
+    ivLogicBad: '期权卖便宜了，建议退守稳定币理财！',
+    volSkew: '偏度天平 (Vol Skew Balance)',
+    putImpact: '📉 低买影响', callImpact: '📈 高卖影响',
+    extremePanic: '🚨极端恐慌', panicPremium: '恐慌溢价', neutral: '均衡', fomo: 'FOMO', extremeFomo: '🚨极端FOMO',
+    skewIs: '偏度 = Put IV - Call IV =',
+    // M2
+    bbWidth: '布林带宽度缩水率 (BB Width Squeeze)', bbNormal: '正常', bbNarrow: '偏窄', bbSqueeze: '⚠ 极度收敛',
+    bbDailyWidth: '日线布林带宽度', bbDanger: '← 极度收窄 (危险)', bbSafe: '正常范围 →',
+    adxTitle: '平均趋向指数 (ADX)', adxTrend: '趋势', adxRising: '上升中 ↑', adxFlat: '平稳 →',
+    adxStrong: '⚠ 强趋势', adxBrewing: '⚡ 酝酿突破', adxTransit: '趋势渐起', adxRange: '震荡市',
+    direction: '方向', bullish: '偏多', bearish: '偏空',
+    // M3
+    atrTitle: '日均真实波动幅度 (ATR-14)', atrSafe: '安全距离已计算',
+    atrAbs: 'ATR 绝对值', atrPct: 'ATR 百分比', safeDist: '安全距离 (1.5x ATR)', safeRange: '安全执行价区间',
+    fractalTitle: '多周期分形支撑/阻力线 (Fractal Levels)', fractalBasis: '基于日线K线',
+    resistance: '阻力', support: '支撑', currentPrice: '● 现价',
+    fractalLogic: '选择双币赢执行价时，必须在分形关键位的外侧。',
+    buyBelow: '低买建议选在', sellAbove: '高卖建议选在', below: '下方', above: '上方',
+    // M4
+    liqTitle: '清算热力图 (Liquidation Heatmap)', liqWindow: '72h 窗口',
+    liqEstimate: '基于持仓估算', longLiq: '■ 多头清算', shortLiq: '■ 空头清算',
+    maxLongCluster: '最大多头清算簇', maxShortCluster: '最大空头清算簇',
+    liqLogic: '做市商喜欢"扫损"。你的"低买"执行价必须放在多头爆仓区间的下方，去接带血的筹码。',
+    macroTitle: '宏观经济与代币解锁倒计时',
+    macroUrgent: '⚠ 24h内有事件', macroSafe: '近期安全', highImpact: '●高影响',
+    macroLogic: '重大数据公布前 24 小时内，直接将策略降级到最保守的 5-10% 年化。事件驱动的瞬间振幅往往超过 5%，双币赢极易被击穿。',
+    noEvents: '暂无即将到来的宏观事件',
+    // M6
+    fundingRate: '加权资金费率', annualized: '年化', rawRate: '原始费率', avg10d: '10日均值',
+    oiRatio: 'OI / 市值占比', oiTotal: 'OI 总量', oiGrowth3d: '3日增速', oiHigh: '⚠ 杠杆过高', oiNormal: '正常',
+    cvdTitle: '现货 vs 合约 CVD', spotCVD: '现货 CVD', futuresCVD: '合约 CVD',
+    buying: '买入', selling: '卖出', aligned: '一致', fakeBrkout: '⚠ 假突破', sqzPotential: '潜在轧空',
+    maxPainTitle: '期权最大痛点 (Max Pain)', gravity: '引力方向', expiry: '到期日', optionOI: '期权OI',
+    mpAbove: 'Max Pain 在上方 ↑', mpBelow: 'Max Pain 在下方 ↓',
+    fridayStrategy: '周五策略',
+    // M5
+    btcHoldings: 'BTC 持仓总量', avgCost: '平均成本', totalInvest: '总投入', unrealizedPnL: '未实现盈亏',
+    dataUpdate: '数据更新', lastBuy: '最近一次购买', avgPrice: '均价', total: '总计',
+    navPremium: 'NAV 溢价率 (华尔街情绪温度计)', navNormal: '正常', navHot: '偏热', navFomo: '极度 FOMO', navDiscount: '折价',
+    mstrMarketCap: 'MSTR 市值', btcHoldingsValue: 'BTC 持仓价值',
+    financeMonitor: '融资公告 & SEC 监控', activeOffering: '正在执行', noOffering: '无活跃融资',
+    recentSEC: '近期 SEC 文件', signals: '综合信号',
   },
   en: {
     refresh: '⟳ Refresh', refreshing: '⟳ Refreshing...', refreshFail: '⟳ Failed', forceRefresh: '⟳ Force Refresh...',
-    sellPut: 'Sell Put (Buy Low)', sellCall: 'Sell Call (Sell High)',
-    suggestAPY: 'Target APY', orderPrice: 'Strike', positionCap: 'Position Cap',
+    sellPut: '📉 Sell Put (Buy Low)', sellCall: '📈 Sell Call (Sell High)',
+    suggestAPY: 'Target APY', orderPrice: 'Strike', positionCap: 'Position Cap', targetAPY: 'Target APY',
     tenorMatrix: 'Tenor × APY Matrix', todayPlan: "Today's Plan",
     globalVeto: '⛔ Global Veto Triggered', strangleRec: '🎯 Sell Strangle Recommended',
-    halt: '🚨Halt', defense: '⚠Defense', conservative: '🟢Okay', standard: '🟩Go', offense: '❇️Attack',
-    fuse: 'Fused', redHalt: '🔴 Red Halt', yellowDef: '🟡 Yellow Defense',
-    greenCons: '🟢 Light Green', greenStd: '🟩 Standard Green', deepGreen: '❇️ Deep Green',
-    tierNote1: 'Absolute halt, stay in cash', tierNote2: 'Warning mode, forced downgrade',
-    tierNote3: 'Mild conditions, safety first', tierNote4: 'Good conditions, execute normally', tierNote5: 'Prime window, harvest premiums',
-    position: 'Position', dataAge: 'ago', weekend: 'Weekend — no new trades, keep funds in savings',
+    fuse: 'Fused', position: 'Position', dataAge: 'ago',
+    weekend: '🏖️ Weekend — no new trades, keep funds in savings',
     tokyoTime: 'Tokyo', localTime: 'Local',
-    dayNames: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
-    today: 'Today is',
+    dayNames: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], today: 'Today is',
+    m1Title: 'Volatility & Pricing', m1Sub: 'Core Profitability',
+    m2Title: 'Market State & Breakout Warning', m2Sub: 'Anti-Slippage',
+    m3Title: 'Safety Margin Calculator', m3Sub: 'Dynamic Levels',
+    m4Title: 'Microstructure & Events', m4Sub: 'Risk Scanner',
+    m5Title: 'MSTR (Strategy) Tracker', m5Sub: 'BTC Whale Signal',
+    m6Title: 'Derivatives Indicators', m6Sub: 'Leverage · Options · Microstructure',
+    ivVsRv: 'Implied Volatility vs Realized Volatility (IV vs RV)',
+    ivRich: 'Rich Premium', ivOk: 'Low Premium', ivDanger: '⚠ Inverted',
+    decisionLogic: 'Decision Logic',
+    ivLogic1: 'Dual investment has positive expectancy when IV > RV. Currently IV is',
+    ivHigher: 'above', ivLower: 'below',
+    ivLogicGood: 'Premium is rich — good time for dual investment.',
+    ivLogicMid: 'Premium is moderate — consider lower APY target.',
+    ivLogicBad: 'Options are cheap — retreat to stablecoin lending!',
+    volSkew: 'Vol Skew Balance',
+    putImpact: '📉 Put Impact', callImpact: '📈 Call Impact',
+    extremePanic: '🚨Extreme Panic', panicPremium: 'Panic Premium', neutral: 'Neutral', fomo: 'FOMO', extremeFomo: '🚨Extreme FOMO',
+    skewIs: 'Skew = Put IV - Call IV =',
+    bbWidth: 'Bollinger Band Width Squeeze', bbNormal: 'Normal', bbNarrow: 'Narrow', bbSqueeze: '⚠ Extreme Squeeze',
+    bbDailyWidth: 'Daily BB Width', bbDanger: '← Extreme squeeze (danger)', bbSafe: 'Normal range →',
+    adxTitle: 'Average Directional Index (ADX)', adxTrend: 'Trend', adxRising: 'Rising ↑', adxFlat: 'Flat →',
+    adxStrong: '⚠ Strong Trend', adxBrewing: '⚡ Brewing', adxTransit: 'Transitioning', adxRange: 'Ranging',
+    direction: 'Direction', bullish: 'Bullish', bearish: 'Bearish',
+    atrTitle: 'Average True Range (ATR-14)', atrSafe: 'Safety distance calculated',
+    atrAbs: 'ATR Absolute', atrPct: 'ATR %', safeDist: 'Safe Distance (1.5x ATR)', safeRange: 'Safe Strike Range',
+    fractalTitle: 'Multi-Timeframe Fractal Support/Resistance', fractalBasis: 'Based on Daily K-line',
+    resistance: 'Resistance', support: 'Support', currentPrice: '● Current Price',
+    fractalLogic: 'Strike price must be placed outside fractal key levels.',
+    buyBelow: 'Buy low below', sellAbove: 'Sell high above', below: 'below', above: 'above',
+    liqTitle: 'Liquidation Heatmap', liqWindow: '72h window',
+    liqEstimate: 'OI-based estimate', longLiq: '■ Long Liq', shortLiq: '■ Short Liq',
+    maxLongCluster: 'Max Long Liq Cluster', maxShortCluster: 'Max Short Liq Cluster',
+    liqLogic: 'Market makers hunt stops. Your buy-low strike must be BELOW the long liquidation zone — catch bloody chips.',
+    macroTitle: 'Macro Events & Token Unlock Countdown',
+    macroUrgent: '⚠ Event within 24h', macroSafe: 'Near-term safe', highImpact: '●High Impact',
+    macroLogic: 'Within 24h of major data releases, downgrade to most conservative 5-10% APY. Event-driven swings often exceed 5%.',
+    noEvents: 'No upcoming macro events',
+    fundingRate: 'Weighted Funding Rate', annualized: 'Annualized', rawRate: 'Raw Rate', avg10d: '10d Average',
+    oiRatio: 'OI / Market Cap Ratio', oiTotal: 'OI Total', oiGrowth3d: '3d Growth', oiHigh: '⚠ High Leverage', oiNormal: 'Normal',
+    cvdTitle: 'Spot vs Futures CVD', spotCVD: 'Spot CVD', futuresCVD: 'Futures CVD',
+    buying: 'Buying', selling: 'Selling', aligned: 'Aligned', fakeBrkout: '⚠ Fake Breakout', sqzPotential: 'Squeeze Potential',
+    maxPainTitle: 'Options Max Pain', gravity: 'Gravity', expiry: 'Expiry', optionOI: 'Option OI',
+    mpAbove: 'Max Pain Above ↑', mpBelow: 'Max Pain Below ↓',
+    fridayStrategy: 'Friday Strategy',
+    btcHoldings: 'BTC Holdings', avgCost: 'Avg Cost', totalInvest: 'Total Invested', unrealizedPnL: 'Unrealized P&L',
+    dataUpdate: 'Data Update', lastBuy: 'Last Purchase', avgPrice: 'Avg Price', total: 'Total',
+    navPremium: 'NAV Premium (Wall St Sentiment)', navNormal: 'Normal', navHot: 'Warm', navFomo: 'Extreme FOMO', navDiscount: 'Discount',
+    mstrMarketCap: 'MSTR Market Cap', btcHoldingsValue: 'BTC Holdings Value',
+    financeMonitor: 'Financing & SEC Monitor', activeOffering: 'Active', noOffering: 'No Active Offering',
+    recentSEC: 'Recent SEC Filings', signals: 'Signals',
   }
 };
 function t(key) { return (I18N[currentLang] || I18N.en)[key] || (I18N.en)[key] || key; }
+function tx(zh, en) { return currentLang === 'zh' ? zh : en; }
 
 function setLang(lang) {
   currentLang = lang;
@@ -443,10 +541,16 @@ function formatMultiTZ() {
   const now = new Date();
   const opts = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
   const tokyo = now.toLocaleTimeString('ja-JP', { ...opts, timeZone: 'Asia/Tokyo' });
-  const local = now.toLocaleTimeString(undefined, opts);
-  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g,' ');
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const localCity = localTZ.split('/').pop().replace(/_/g,' ');
   const dateStr = now.toLocaleDateString(currentLang === 'zh' ? 'zh-CN' : 'en-US', { year:'numeric', month:'numeric', day:'numeric' });
-  return `${dateStr} | ${t('tokyoTime')} ${tokyo} | ${localTZ} ${local}`;
+
+  // If local timezone is Tokyo, only show once
+  if (localTZ === 'Asia/Tokyo') {
+    return `${dateStr} | ${t('tokyoTime')} ${tokyo}`;
+  }
+  const local = now.toLocaleTimeString(undefined, opts);
+  return `${dateStr} | ${t('tokyoTime')} ${tokyo} | ${localCity} ${local}`;
 }
 
 // ─── Real Data API Client ───
@@ -571,7 +675,7 @@ function renderTrafficLight(decision, data) {
         <div>
           <div style="font-size:.8rem;color:var(--text-muted)">${label}</div>
           <div style="font-size:.95rem;font-weight:700">${gr}</div>
-          ${card.position ? `<div style="font-size:.65rem;color:var(--text-muted);margin-top:2px">建议仓位: <span style="color:var(--${c})">${card.position}</span>${card.note ? ' · ' + card.note : ''}</div>` : ''}
+          ${card.position ? `<div style="font-size:.65rem;color:var(--text-muted);margin-top:2px">' + t('position') + ': <span style="color:var(--${c})">${card.position}</span>${card.note ? ' · ' + card.note : ''}</div>` : ''}
         </div>
         <div style="margin-left:auto;text-align:right">
           <div class="mono" style="font-size:1.8rem;font-weight:700;color:var(--${c})">${vetoed ? '—' : s}</div>
@@ -582,11 +686,11 @@ function renderTrafficLight(decision, data) {
       ${!vetoed ? `
       <div style="display:flex;gap:10px;margin-bottom:12px">
         <div style="flex:1;padding:8px;background:var(--bg-card-alt);border-radius:6px;text-align:center">
-          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">建议年化</div>
+          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">${t('suggestAPY')}</div>
           <div class="mono" style="font-size:1rem;font-weight:700;color:var(--${c})">${apy}</div>
         </div>
         <div style="flex:1;padding:8px;background:var(--bg-card-alt);border-radius:6px;text-align:center">
-          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">${side === 'put' ? '挂单价 <' : '挂单价 >'}</div>
+          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">${side === 'put' ? '' + t('orderPrice') + ' <' : '' + t('orderPrice') + ' >'}</div>
           <div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${strike.price ? '$' + fmt(strike.price) : '—'}</div>
           <div style="font-size:.6rem;color:var(--text-muted)">${strike.pct ? (side==='put'?'-':'+')+strike.pct+'%' : ''}</div>
         </div>
@@ -596,7 +700,7 @@ function renderTrafficLight(decision, data) {
 
       ${!vetoed && card.tenor ? `
       <div style="margin-bottom:8px;border-top:1px solid var(--border);padding-top:8px">
-        <div style="font-size:.65rem;color:var(--text-muted);margin-bottom:6px;font-weight:600;letter-spacing:1px">期限 × APR 矩阵</div>
+        <div style="font-size:.65rem;color:var(--text-muted);margin-bottom:6px;font-weight:600;letter-spacing:1px">${t('tenorMatrix')}</div>
         ${['h24','h48','h72','h96'].map(k => {
           const t = card.tenor[k]; if(!t) return '';
           const label = k==='h24'?'24h':k==='h48'?'48h':'72h';
@@ -619,24 +723,24 @@ function renderTrafficLight(decision, data) {
   // ── Global vetoes bar ──
   const gvHTML = gv.length > 0 ? `
     <div style="padding:10px 16px;background:${gv.some(v=>v.severity==='red') ? 'var(--red-bg)' : 'var(--yellow-bg)'};border-radius:8px;margin-bottom:12px;border:1px solid ${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'}30">
-      <div style="font-size:.75rem;font-weight:700;color:${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'};margin-bottom:4px">⛔ 全局否决门触发</div>
+      <div style="font-size:.75rem;font-weight:700;color:${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'};margin-bottom:4px">${t('globalVeto')}</div>
       ${gv.map(v => `<div style="font-size:.8rem;color:var(--text-primary);line-height:1.5"><strong>[${v.tag}]</strong> ${v.reason} → ${v.action}</div>`).join('')}
     </div>` : '';
 
   // ── Strangle recommendation ──
   const strangleHTML = d.strangle?.recommended ? `
     <div style="padding:10px 16px;background:linear-gradient(135deg,var(--green-bg),var(--cyan)08);border-radius:8px;margin-top:12px;border:1px solid var(--green)30">
-      <div style="font-size:.8rem;font-weight:700;color:var(--green);margin-bottom:4px">🎯 宽跨式双卖推荐 (Sell Strangle)</div>
+      <div style="font-size:.8rem;font-weight:700;color:var(--green);margin-bottom:4px">${t('strangleRec')}</div>
       <div style="font-size:.82rem;color:var(--text-secondary)">${d.strangle.note}</div>
     </div>` : '';
 
-  // ── Position Advice (今日仓位建议) ──
-  const dayNames = ['日','一','二','三','四','五','六'];
-  const dayLabel = d.dayOfWeek !== undefined ? `周${dayNames[d.dayOfWeek]}` : '';
+  // ── Position Advice ──
+  const dn = t('dayNames');
+  const dayLabel = d.dayOfWeek !== undefined ? (currentLang === 'zh' ? `周${dn[d.dayOfWeek]}` : dn[d.dayOfWeek]) : '';
   const positions = d.positionAdvice || [];
   const posHTML = positions.length > 0 ? `
     <div style="padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-top:12px">
-      <div style="font-size:.85rem;font-weight:700;color:var(--text-primary);margin-bottom:10px">📅 今日是${dayLabel} — 低买执行方案 <span style="font-size:.75rem;color:var(--text-muted);font-weight:400">${d.sellPut?.tierLabel ? '| 档位: ' + d.sellPut.grade : ''}</span></div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text-primary);margin-bottom:10px">📅 ${t('today')} ${dayLabel} — ${t('todayPlan')} <span style="font-size:.75rem;color:var(--text-muted);font-weight:400">${d.sellPut?.grade ? '| ' + d.sellPut.grade : ''}</span></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${positions.map(p => {
           if (!p.detail) {
@@ -653,9 +757,9 @@ function renderTrafficLight(decision, data) {
             </div>
             ${!isBan && dt.apy && dt.apy !== '0%' ? `
             <div style="display:flex;gap:8px;margin-bottom:6px">
-              <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">目标年化</div><div class="mono" style="font-size:1rem;font-weight:700;color:${sc}">${dt.apy}</div></div>
-              <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">挂单价 <</div><div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${dt.strike?'$'+fmt(dt.strike):'—'}</div></div>
-              ${dt.positionPct ? `<div style="flex:0.7;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">仓位上限</div><div class="mono" style="font-size:.9rem;font-weight:700;color:var(--text-secondary)">${dt.positionPct}</div></div>` : ''}
+              <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">${t('targetAPY')}</div><div class="mono" style="font-size:1rem;font-weight:700;color:${sc}">${dt.apy}</div></div>
+              <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">' + t('orderPrice') + ' <</div><div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${dt.strike?'$'+fmt(dt.strike):'—'}</div></div>
+              ${dt.positionPct ? `<div style="flex:0.7;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">${t('positionCap')}</div><div class="mono" style="font-size:.9rem;font-weight:700;color:var(--text-secondary)">${dt.positionPct}</div></div>` : ''}
             </div>
             <div style="font-size:.72rem;color:var(--text-muted)">${p.note||''}</div>
             <div style="font-size:.7rem;color:var(--text-secondary);margin-top:3px">${dt.note||''}</div>` : `<div style="font-size:.85rem;color:var(--red);text-align:center;padding:10px 0;font-weight:600">${dt.note||'禁止操作'}</div>`}
@@ -678,8 +782,8 @@ function renderTrafficLight(decision, data) {
     ${mpHTML}
     ${adviceHTML}
     <div style="display:flex;gap:12px;flex-wrap:wrap">
-      ${renderCard('put', sp, '📉', '低买 Sell Put', '--green')}
-      ${renderCard('call', sc, '📈', '高卖 Sell Call', '--red')}
+      ${renderCard('put', sp, '📉', t('sellPut'), '--green')}
+      ${renderCard('call', sc, '📈', t('sellCall'), '--red')}
     </div>
     ${strangleHTML}
     ${posHTML}
@@ -693,13 +797,13 @@ function renderModule1(data) {
   document.getElementById('module1').innerHTML = `
     <div class="module-header">
       <span class="module-num">M1</span>
-      <span class="module-title">波动率与定价</span>
-      <span class="module-subtitle">核心盈利指标</span>
+      <span class="module-title">${t('m1Title')}</span>
+      <span class="module-subtitle">${t('m1Sub')}</span>
     </div>
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">隐含波动率 vs 实际波动率 (IV vs RV)</span>
+        <span class="metric-name">${t('ivVsRv')}</span>
         <span class="metric-badge badge-${ivStatus}">${ivStatus === 'safe' ? '溢价丰富' : ivStatus === 'warn' ? '溢价偏低' : '⚠ 倒挂'}</span>
       </div>
       <div class="metric-value-row">
@@ -713,14 +817,14 @@ function renderModule1(data) {
       </div>
       <canvas id="ivrvChart" class="vol-chart"></canvas>
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>IV > RV 时做双币赢有正期望。当前 IV ${data.iv > data.rv ? '高于' : '低于'} RV ${Math.abs(ivRvSpread).toFixed(1)} 个百分点，
+        <strong>${t('decisionLogic')}:</strong> ${tx('IV > RV 时做双币赢有正期望。当前 IV','Dual investment has +EV when IV > RV. Currently IV is')} ${data.iv > data.rv ? '高于' : '低于'} RV ${Math.abs(ivRvSpread).toFixed(1)} 个百分点，
         ${ivRvSpread > 10 ? '溢价充足，是做双币赢的好时机。' : ivRvSpread > 0 ? '溢价一般，建议适当降低年化目标。' : '期权卖便宜了，建议退守稳定币理财！'}
       </div>
     </div>
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">偏度天平 (Vol Skew Balance)</span>
+        <span class="metric-name">${t('volSkew')}</span>
         <span class="metric-badge badge-${Math.abs(data.skew.skew) > 20 ? 'danger' : Math.abs(data.skew.skew) > 5 ? 'warn' : 'safe'}">${data.skew.skew > 20 ? '🚨极端恐慌' : data.skew.skew > 5 ? '恐慌溢价' : data.skew.skew > -2 ? '均衡' : data.skew.skew > -10 ? 'FOMO' : '🚨极端FOMO'}</span>
       </div>
       <div class="metric-value-row">
@@ -754,11 +858,11 @@ function renderModule1(data) {
       <!-- Dual-side impact -->
       <div style="display:flex;gap:8px;margin:8px 0">
         <div style="flex:1;padding:8px 10px;border-radius:6px;background:${data.skew.skew > 5 ? 'var(--green-bg)' : data.skew.skew < -2 ? 'var(--red-bg)' : 'var(--bg-card-alt)'};border-left:3px solid ${data.skew.skew > 5 ? 'var(--green)' : data.skew.skew < -2 ? 'var(--red)' : 'var(--border)'}">
-          <div style="font-size:.65rem;color:var(--text-muted)">📉 低买影响</div>
+          <div style="font-size:.65rem;color:var(--text-muted)">${t('putImpact')}</div>
           <div style="font-size:.78rem;color:${data.skew.skew > 5 ? 'var(--green)' : data.skew.skew < -2 ? 'var(--red)' : 'var(--text-secondary)'};font-weight:600;margin-top:2px">${data.skew.skew > 20 ? '🚨 熔断! 黑天鹅计价中' : data.skew.skew > 5 ? '✅ 恐慌补偿金丰厚' : data.skew.skew >= -2 ? '— 中性' : data.skew.skew >= -10 ? '⚠ Put权利金偏低' : '⛔ 利润极低+踩踏风险'}</div>
         </div>
         <div style="flex:1;padding:8px 10px;border-radius:6px;background:${data.skew.skew < -5 ? 'var(--green-bg)' : data.skew.skew > 2 ? 'var(--red-bg)' : 'var(--bg-card-alt)'};border-left:3px solid ${data.skew.skew < -5 ? 'var(--green)' : data.skew.skew > 2 ? 'var(--red)' : 'var(--border)'}">
-          <div style="font-size:.65rem;color:var(--text-muted)">📈 高卖影响</div>
+          <div style="font-size:.65rem;color:var(--text-muted)">${t('callImpact')}</div>
           <div style="font-size:.78rem;color:${data.skew.skew < -5 ? 'var(--green)' : data.skew.skew > 2 ? 'var(--red)' : 'var(--text-secondary)'};font-weight:600;margin-top:2px">${data.skew.skew < -20 ? '🚨 熔断! FOMO无阻力' : data.skew.skew < -5 ? '✅ 贪婪溢价丰厚' : data.skew.skew <= 2 ? '— 中性' : data.skew.skew <= 10 ? '⚠ Call权利金低' : '⛔ 底部高卖=送现货'}</div>
         </div>
       </div>
@@ -778,29 +882,29 @@ function renderModule2(data) {
   document.getElementById('module2').innerHTML = `
     <div class="module-header">
       <span class="module-num">M2</span>
-      <span class="module-title">市场状态与破位预警</span>
-      <span class="module-subtitle">防斩断指标</span>
+      <span class="module-title">${t('m2Title')}</span>
+      <span class="module-subtitle">${t('m2Sub')}</span>
     </div>
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">布林带宽度缩水率 (BB Width Squeeze)</span>
-        <span class="metric-badge badge-${bbStatus}">${data.bb.squeeze ? '⚠ 极度收敛' : data.bb.width < 6 ? '偏窄' : '正常'}</span>
+        <span class="metric-name">${t('bbWidth')}</span>
+        <span class="metric-badge badge-${bbStatus}">${data.bb.squeeze ? t('bbSqueeze') : data.bb.width < 6 ? t('bbNarrow') : t('bbNormal')}</span>
       </div>
       <div class="metric-value-row">
         <span class="metric-value" style="color:${data.bb.squeeze ? 'var(--red)' : data.bb.width < 6 ? 'var(--yellow)' : 'var(--green)'}">
           ${data.bb.width.toFixed(2)}%
         </span>
-        <span class="metric-sub">日线布林带宽度</span>
+        <span class="metric-sub">' + t('bbDailyWidth') + '</span>
       </div>
       <div class="metric-bar">
         <div class="metric-bar-fill" style="width:${Math.min(100, data.bb.width * 10)}%;background:${data.bb.squeeze ? 'var(--red)' : data.bb.width < 6 ? 'var(--yellow)' : 'var(--green)'}"></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin:6px 0;font-size:.65rem;font-family:'JetBrains Mono',monospace;color:var(--text-muted)">
-        <span>← 极度收窄 (危险)</span><span>正常范围 →</span>
+        <span>← ${tx('极度收窄 (危险)','Extreme squeeze (danger)')}</span><span>${tx('正常范围','Normal range')} →</span>
       </div>
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>${data.bb.squeeze
+        <strong>${t('decisionLogic')}：</strong>${data.bb.squeeze
           ? '🔴 布林带极度收敛！市场即将剧烈突破，绝对不要贪图高年化！退守5%年化或转入活期理财。'
           : data.bb.width < 6
           ? '🟡 布林带偏窄，需密切关注。建议降低年化目标至10-15%。'
@@ -810,8 +914,8 @@ function renderModule2(data) {
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">平均趋向指数 (ADX)</span>
-        <span class="metric-badge badge-${adxStatus}">${data.adx.value > 30 ? '⚠ 强趋势' : data.adx.value > 25 ? '趋势渐起' : (data.adx.value >= 20 && data.adx.trend === 'rising') ? '⚡ 酝酿突破' : '震荡市'}</span>
+        <span class="metric-name">${t('adxTitle')}</span>
+        <span class="metric-badge badge-${adxStatus}">${data.adx.value > 30 ? t('adxStrong') : data.adx.value > 25 ? t('adxTransit') : (data.adx.value >= 20 && data.adx.trend === 'rising') ? t('adxBrewing') : t('adxRange')}</span>
       </div>
       <div class="metric-value-row">
         <span class="metric-value" style="color:${data.adx.value > 30 ? 'var(--red)' : data.adx.value > 25 ? 'var(--yellow)' : 'var(--green)'}">
@@ -836,10 +940,10 @@ function renderModule2(data) {
       <div style="display:flex;gap:12px;margin:8px 0">
         <div class="calc-item" style="flex:1"><label>+DI</label><div class="val green mono">${data.adx.di_plus.toFixed(1)}</div></div>
         <div class="calc-item" style="flex:1"><label>-DI</label><div class="val red mono">${data.adx.di_minus.toFixed(1)}</div></div>
-        <div class="calc-item" style="flex:1"><label>方向</label><div class="val mono" style="color:${data.adx.di_plus > data.adx.di_minus ? 'var(--green)' : 'var(--red)'}">${data.adx.di_plus > data.adx.di_minus ? '偏多' : '偏空'}</div></div>
+        <div class="calc-item" style="flex:1"><label>${t('direction')}</label><div class="val mono" style="color:${data.adx.di_plus > data.adx.di_minus ? 'var(--green)' : 'var(--red)'}">${data.adx.di_plus > data.adx.di_minus ? tx('偏多','Bullish') : tx('偏空','Bearish')}</div></div>
       </div>
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>${data.adx.value < 20
+        <strong>${t('decisionLogic')}：</strong>${data.adx.value < 20
           ? '🟢 ADX < 20，深度震荡市！双币赢印钞机模式，可追求 15-20% 年化。'
           : data.adx.value < 25 && data.adx.trend === 'rising'
           ? `🟡 ADX=${data.adx.value.toFixed(1)} 距警戒线25仅差 ${(25-data.adx.value).toFixed(1)} 且正在上升！趋势酝酿中，建议缩短期限至24h，降低年化目标。`
@@ -861,30 +965,30 @@ function renderModule3(data) {
   document.getElementById('module3').innerHTML = `
     <div class="module-header">
       <span class="module-num">M3</span>
-      <span class="module-title">安全边际计算器</span>
-      <span class="module-subtitle">动态点位指标</span>
+      <span class="module-title">${t('m3Title')}</span>
+      <span class="module-subtitle">${t('m3Sub')}</span>
     </div>
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">日均真实波动幅度 (ATR-14)</span>
+        <span class="metric-name">${t('atrTitle')}</span>
         <span class="metric-badge badge-safe">安全距离已计算</span>
       </div>
       <div class="calc-grid">
         <div class="calc-item">
-          <label>ATR 绝对值</label>
+          <label>${t('atrAbs')}</label>
           <div class="val cyan mono">$${fmt(data.atr.value)}</div>
         </div>
         <div class="calc-item">
-          <label>ATR 百分比</label>
+          <label>${t('atrPct')}</label>
           <div class="val cyan mono">${fmtP(data.atr.pct)}</div>
         </div>
         <div class="calc-item">
-          <label>安全距离 (1.5x ATR)</label>
+          <label>${t('safeDist')}</label>
           <div class="val green mono">${fmtP(data.atr.safe15x)}</div>
         </div>
         <div class="calc-item">
-          <label>安全执行价区间</label>
+          <label>${t('safeRange')}</label>
           <div class="val yellow mono">$${fmt(data.price * (1 - data.atr.safe15x/100))} - $${fmt(data.price * (1 + data.atr.safe15x/100))}</div>
         </div>
       </div>
@@ -898,11 +1002,11 @@ function renderModule3(data) {
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">多周期分形支撑/阻力线 (Fractal Levels)</span>
+        <span class="metric-name">${t('fractalTitle')}</span>
         <span class="metric-badge badge-safe">基于日线K线</span>
       </div>
 
-      <div style="margin-bottom:8px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▲ 阻力位（高卖执行价必须在这些之上）</div>
+      <div style="margin-bottom:8px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▲ ${tx('阻力位（高卖执行价必须在这些之上）','Resistance (Sell Call strike must be above these)')}</div>
       ${fractals.resistances.map(r => `
         <div class="level-line">
           <div class="level-dot" style="background:var(--red)"></div>
@@ -913,7 +1017,7 @@ function renderModule3(data) {
       `).join('')}
 
       <div style="margin:12px 0;padding:8px 12px;background:linear-gradient(90deg,transparent,var(--cyan-glow),transparent);border-radius:4px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:.85rem">
-        ● 现价 $${fmt(data.price)}
+        ● ${tx('现价','Price')} $${fmt(data.price)}
       </div>
 
       ${fractals.supports.map(s => `
@@ -925,10 +1029,10 @@ function renderModule3(data) {
         </div>
       `).join('')}
 
-      <div style="margin-top:4px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▼ 支撑位（低买执行价必须在这些之下）</div>
+      <div style="margin-top:4px;font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">▼ ${tx('支撑位（低买执行价必须在这些之下）','Support (Sell Put strike must be below these)')}</div>
 
       <div class="metric-explain" style="margin-top:12px">
-        <strong>决策逻辑：</strong>选择双币赢执行价时，必须在分形关键位的外侧。
+        <strong>${t('decisionLogic')}：</strong>选择双币赢执行价时，必须在分形关键位的外侧。
         低买建议选在 <strong>${fractals.supports[1].tf} 支撑 $${fmt(fractals.supports[1].price)}</strong> 下方；
         高卖建议选在 <strong>${fractals.resistances[1].tf} 阻力 $${fmt(fractals.resistances[1].price)}</strong> 上方。
       </div>
@@ -988,7 +1092,7 @@ function renderModule4(data) {
         <div class="event-countdown ${isUrgent ? 'urgent' : 'normal'}">${isUrgent ? '⚠ ' : ''}${countdown}</div>
       </div>
     `;
-  }).join('') : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">暂无即将到来的宏观事件</div>';
+  }).join('') : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">' + t('noEvents') + '</div>';
 
   // Find major liquidation cluster
   const longLiqs = liqZones.filter(z => z.side === 'long').sort((a,b) => b.volume - a.volume);
@@ -999,13 +1103,13 @@ function renderModule4(data) {
   document.getElementById('module4').innerHTML = `
     <div class="module-header">
       <span class="module-num">M4</span>
-      <span class="module-title">微观结构与事件驱动</span>
-      <span class="module-subtitle">扫雷指标</span>
+      <span class="module-title">${t('m4Title')}</span>
+      <span class="module-subtitle">${t('m4Sub')}</span>
     </div>
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">清算热力图 (Liquidation Heatmap)</span>
+        <span class="metric-name">${t('liqTitle')}</span>
         <span class="metric-badge badge-warn">72h 窗口 · ${data.liqSource === 'coinglass' ? 'Coinglass' : '基于持仓估算'}</span>
       </div>
       <div class="heatmap">
@@ -1014,40 +1118,40 @@ function renderModule4(data) {
       </div>
       <div style="display:flex;justify-content:space-between;font-size:.65rem;font-family:'JetBrains Mono',monospace;color:var(--text-muted);margin-bottom:10px">
         <span>$${fmt(minP)}</span>
-        <span style="color:var(--green)">■ 多头清算</span>
-        <span style="color:var(--red)">■ 空头清算</span>
+        <span style="color:var(--green)">${t('longLiq')}</span>
+        <span style="color:var(--red)">${t('shortLiq')}</span>
         <span>$${fmt(maxP)}</span>
       </div>
       ${majorLongCluster ? `
       <div class="level-line">
         <div class="level-dot" style="background:var(--green)"></div>
-        <span class="level-label">最大多头清算簇</span>
+        <span class="level-label">${t('maxLongCluster')}</span>
         <span class="level-price" style="color:var(--green)">$${fmt(majorLongCluster.price)}</span>
         <span class="level-pct">${((majorLongCluster.price - data.price) / data.price * 100).toFixed(2)}%</span>
       </div>` : ''}
       ${majorShortCluster ? `
       <div class="level-line">
         <div class="level-dot" style="background:var(--red)"></div>
-        <span class="level-label">最大空头清算簇</span>
+        <span class="level-label">${t('maxShortCluster')}</span>
         <span class="level-price" style="color:var(--red)">$${fmt(majorShortCluster.price)}</span>
         <span class="level-pct">${((majorShortCluster.price - data.price) / data.price * 100).toFixed(2)}%</span>
       </div>` : ''}
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>做市商喜欢"扫损"。你的"低买"执行价必须放在多头爆仓区间的下方，去接带血的筹码。
-        ${majorLongCluster ? `当前最大多头清算簇在 $${fmt(majorLongCluster.price)}，低买执行价应低于此位置。` : ''}
+        <strong>${t('decisionLogic')}：</strong>做市商喜欢"扫损"。你的"低买"执行价必须放在多头爆仓区间的下方，去接带血的筹码。
+        ${majorLongCluster ? `当前${t('maxLongCluster')}在 $${fmt(majorLongCluster.price)}，低买执行价应低于此位置。` : ''}
       </div>
     </div>
 
     <div class="metric-card">
       <div class="metric-top">
-        <span class="metric-name">宏观经济与代币解锁倒计时</span>
+        <span class="metric-name">${t('macroTitle')}</span>
         <span class="metric-badge badge-${events.some(e => e.isUrgent || ((e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime()) - now) < 86400000) ? 'danger' : 'safe'}">
-          ${events.some(e => e.isUrgent || ((e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime()) - now) < 86400000) ? '⚠ 24h内有事件' : '近期安全'}
+          ${events.some(e => e.isUrgent || ((e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime()) - now) < 86400000) ? t('macroUrgent') : t('macroSafe')}
         </span>
       </div>
       ${eventsHTML}
       <div class="metric-explain">
-        <strong>决策逻辑：</strong>重大数据公布前 24 小时内，直接将策略降级到最保守的 5-10% 年化。
+        <strong>${t('decisionLogic')}：</strong>重大数据公布前 24 小时内，直接将策略降级到最保守的 5-10% 年化。
         事件驱动的瞬间振幅往往超过 5%，双币赢极易被击穿。
       </div>
     </div>
@@ -1063,8 +1167,8 @@ function renderModule5(data) {
     el.innerHTML = `
       <div class="module-header">
         <span class="module-num">M5</span>
-        <span class="module-title">MSTR (Strategy) 追踪</span>
-        <span class="module-subtitle">BTC巨鲸信号</span>
+        <span class="module-title">${t('m5Title')}</span>
+        <span class="module-subtitle">${t('m5Sub')}</span>
       </div>
       <div class="metric-card">
         <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.85rem">
@@ -1109,25 +1213,25 @@ function renderModule5(data) {
   el.innerHTML = `
     <div class="module-header">
       <span class="module-num">M5</span>
-      <span class="module-title">MSTR (Strategy) 追踪</span>
-      <span class="module-subtitle">BTC巨鲸信号 · ${h.source === 'bitbo_live' ? '实时' : '缓存'}数据</span>
+      <span class="module-title">${t('m5Title')}</span>
+      <span class="module-subtitle">${t('m5Sub')}</span>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <!-- 左: 持仓 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">BTC 持仓总量</span>
+          <span class="metric-name">${t('btcHoldings')}</span>
         </div>
         <div class="metric-value-row">
           <span class="metric-value" style="color:var(--orange)">${h.totalBTC ? h.totalBTC.toLocaleString() : 'N/A'}</span>
           <span class="metric-sub">BTC</span>
         </div>
         <div class="calc-grid" style="grid-template-columns:1fr 1fr;margin-top:8px">
-          <div class="calc-item"><label>平均成本</label><div class="val cyan mono">$${h.avgCostPerBTC ? fmt(h.avgCostPerBTC) : 'N/A'}</div></div>
-          <div class="calc-item"><label>总投入</label><div class="val mono" style="color:var(--text-secondary)">$${h.totalCostUSD ? (h.totalCostUSD / 1e9).toFixed(1) + 'B' : 'N/A'}</div></div>
-          <div class="calc-item"><label>未实现盈亏</label><div class="val mono" style="color:${h.unrealizedPnL > 0 ? 'var(--green)' : 'var(--red)'}">${h.unrealizedPnL ? (h.unrealizedPnL > 0 ? '+' : '') + '$' + (Math.abs(h.unrealizedPnL) / 1e9).toFixed(2) + 'B' : 'N/A'}</div></div>
-          <div class="calc-item"><label>数据更新</label><div class="val mono" style="color:var(--text-muted);font-size:.8rem">${h.holdingsLastUpdate || 'N/A'}</div></div>
+          <div class="calc-item"><label>${t('avgCost')}</label><div class="val cyan mono">$${h.avgCostPerBTC ? fmt(h.avgCostPerBTC) : 'N/A'}</div></div>
+          <div class="calc-item"><label>${t('totalInvest')}</label><div class="val mono" style="color:var(--text-secondary)">$${h.totalCostUSD ? (h.totalCostUSD / 1e9).toFixed(1) + 'B' : 'N/A'}</div></div>
+          <div class="calc-item"><label>${t('unrealizedPnL')}</label><div class="val mono" style="color:${h.unrealizedPnL > 0 ? 'var(--green)' : 'var(--red)'}">${h.unrealizedPnL ? (h.unrealizedPnL > 0 ? '+' : '') + '$' + (Math.abs(h.unrealizedPnL) / 1e9).toFixed(2) + 'B' : 'N/A'}</div></div>
+          <div class="calc-item"><label>${t('dataUpdate')}</label><div class="val mono" style="color:var(--text-muted);font-size:.8rem">${h.holdingsLastUpdate || 'N/A'}</div></div>
         </div>
         <div style="margin-top:10px;padding:10px 12px;background:var(--bg-card-alt);border-radius:6px;border-left:3px solid var(--orange)">
           <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:4px">最近一次购买</div>
@@ -1144,7 +1248,7 @@ function renderModule5(data) {
       <!-- 中: NAV Premium -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">NAV 溢价率 (华尔街情绪温度计)</span>
+          <span class="metric-name">${t('navPremium')}</span>
           <span class="metric-badge badge-${navStatus}">${navLabel}</span>
         </div>
         ${nav ? `
@@ -1179,7 +1283,7 @@ function renderModule5(data) {
           <span class="mono" style="font-size:.8rem;color:${stock.change >= 0 ? 'var(--green)' : 'var(--red)'}">${stock.change >= 0 ? '+' : ''}${stock.change?.toFixed(2) || 0}%</span>
         </div>` : ''}
         <div class="metric-explain" style="margin-top:10px">
-          <strong>决策逻辑：</strong>${nav && nav.multiple > 2.0
+          <strong>${t('decisionLogic')}：</strong>${nav && nav.multiple > 2.0
             ? '🔴 NAV > 2.0x，华尔街极度 FOMO！BTC 随时可能因获利回吐而回调，避免做高卖 (Sell Call)，全面转向低买。'
             : nav && nav.multiple > 1.5
             ? '🟡 NAV 溢价偏热，注意可能的情绪拐点。'
@@ -1192,7 +1296,7 @@ function renderModule5(data) {
       <!-- 右: 融资 & SEC & 信号 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">融资公告 & SEC 监控</span>
+          <span class="metric-name">${t('financeMonitor')}</span>
           <span class="metric-badge badge-${offering && offering.isActive ? 'warn' : 'safe'}">${offering && offering.isActive ? '正在执行' : '无活跃融资'}</span>
         </div>
         ${offering ? `
@@ -1227,8 +1331,8 @@ function renderModule6(data) {
     el.innerHTML = `
       <div class="module-header">
         <span class="module-num">M6</span>
-        <span class="module-title">衍生品指标</span>
-        <span class="module-subtitle">Funding · OI · CVD · Max Pain</span>
+        <span class="module-title">${t('m6Title')}</span>
+        <span class="module-subtitle">${t('m6Sub')}</span>
       </div>
       <div class="metric-card"><div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.85rem">衍生品数据加载中...</div></div>`;
     return;
@@ -1257,15 +1361,15 @@ function renderModule6(data) {
   el.innerHTML = `
     <div class="module-header">
       <span class="module-num">M6</span>
-      <span class="module-title">衍生品指标</span>
-      <span class="module-subtitle">杠杆 · 期权 · 微观结构</span>
+      <span class="module-title">${t('m6Title')}</span>
+      <span class="module-subtitle">${t('m6Sub')}</span>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
       <!-- 资金费率 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">加权资金费率</span>
+          <span class="metric-name">${t('fundingRate')}</span>
           <span class="metric-badge badge-${fStatus}">${fLabel}</span>
         </div>
         <div class="metric-value-row">
@@ -1273,11 +1377,11 @@ function renderModule6(data) {
           <span class="metric-sub">年化</span>
         </div>
         <div class="calc-grid" style="grid-template-columns:1fr 1fr">
-          <div class="calc-item"><label>原始费率</label><div class="val mono" style="font-size:.85rem">${(f.current * 100)?.toFixed(4) || '0'}%</div></div>
-          <div class="calc-item"><label>10日均值</label><div class="val mono" style="font-size:.85rem">${f.avg10d?.toFixed(1) || '0'}%</div></div>
+          <div class="calc-item"><label>${t('rawRate')}</label><div class="val mono" style="font-size:.85rem">${(f.current * 100)?.toFixed(4) || '0'}%</div></div>
+          <div class="calc-item"><label>${t('avg10d')}</label><div class="val mono" style="font-size:.85rem">${f.avg10d?.toFixed(1) || '0'}%</div></div>
         </div>
         <div class="metric-explain">
-          <strong>决策：</strong>${f.annualized > 50
+          <strong>${t('decisionLogic')}：</strong>${f.annualized > 50
             ? '🔴 年化>50%，多头极度拥挤！随时踩踏，低买执行价必须放到 -10% 以下。'
             : f.annualized > 25
             ? '🟡 费率偏高，多头较拥挤，注意踩踏风险。'
@@ -1290,18 +1394,18 @@ function renderModule6(data) {
       <!-- OI / 市值 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">OI / 市值占比</span>
+          <span class="metric-name">${t('oiRatio')}</span>
           <span class="metric-badge badge-${oiStatus}">${oi.isHighOI ? '⚠ 杠杆过高' : '正常'}</span>
         </div>
         <div class="metric-value-row">
           <span class="metric-value" style="color:${oiColor}">${oi.oiMarketCapRatio?.toFixed(2) || '0'}%</span>
         </div>
         <div class="calc-grid" style="grid-template-columns:1fr 1fr">
-          <div class="calc-item"><label>OI 总量</label><div class="val cyan mono" style="font-size:.85rem">${oi.oiUSD ? '$' + (oi.oiUSD / 1e9).toFixed(1) + 'B' : 'N/A'}</div></div>
-          <div class="calc-item"><label>3日增速</label><div class="val mono" style="font-size:.85rem;color:${oi.oiGrowth3d > 10 ? 'var(--red)' : 'var(--text-secondary)'}">${oi.oiGrowth3d > 0 ? '+' : ''}${oi.oiGrowth3d?.toFixed(1) || '0'}%</div></div>
+          <div class="calc-item"><label>${t('oiTotal')}</label><div class="val cyan mono" style="font-size:.85rem">${oi.oiUSD ? '$' + (oi.oiUSD / 1e9).toFixed(1) + 'B' : 'N/A'}</div></div>
+          <div class="calc-item"><label>${t('oiGrowth3d')}</label><div class="val mono" style="font-size:.85rem;color:${oi.oiGrowth3d > 10 ? 'var(--red)' : 'var(--text-secondary)'}">${oi.oiGrowth3d > 0 ? '+' : ''}${oi.oiGrowth3d?.toFixed(1) || '0'}%</div></div>
         </div>
         <div class="metric-explain">
-          <strong>决策：</strong>${oi.isHighOI
+          <strong>${t('decisionLogic')}：</strong>${oi.isHighOI
             ? '🔴 OI/市值>3.5%，杠杆风暴即将来临！降低仓位或只接年化5%极保守单。'
             : oi.oiGrowth3d > 15
             ? '🟡 OI 3日暴增，杠杆快速堆积中，需密切关注。'
@@ -1312,18 +1416,18 @@ function renderModule6(data) {
       <!-- CVD -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">现货 vs 合约 CVD</span>
+          <span class="metric-name">${t('cvdTitle')}</span>
           <span class="metric-badge badge-${cvdStatus}">${cvd.divergence === 'bearish_divergence' ? '⚠ 假突破' : cvd.divergence === 'bullish_divergence' ? '潜在轧空' : '一致'}</span>
         </div>
         <div style="display:flex;gap:12px;margin:8px 0">
           <div style="flex:1;text-align:center">
-            <div style="font-size:.65rem;color:var(--text-muted)">现货 CVD</div>
+            <div style="font-size:.65rem;color:var(--text-muted)">${t('spotCVD')}</div>
             <div class="mono" style="font-size:1.1rem;font-weight:700;color:${cvd.spotCVD > 0 ? 'var(--green)' : 'var(--red)'}">${cvd.spotCVD > 0 ? '买入' : '卖出'}</div>
             <div class="mono" style="font-size:.75rem;color:var(--text-muted)">${cvd.spotCVD?.toFixed(1) || '0'} BTC</div>
           </div>
           <div style="flex:0 0 1px;background:var(--border)"></div>
           <div style="flex:1;text-align:center">
-            <div style="font-size:.65rem;color:var(--text-muted)">合约 CVD</div>
+            <div style="font-size:.65rem;color:var(--text-muted)">${t('futuresCVD')}</div>
             <div class="mono" style="font-size:1.1rem;font-weight:700;color:${cvd.futuresCVD > 0 ? 'var(--green)' : 'var(--red)'}">${cvd.futuresCVD > 0 ? '买入' : '卖出'}</div>
             <div class="mono" style="font-size:.75rem;color:var(--text-muted)">${cvd.futuresCVD?.toFixed(1) || '0'} BTC</div>
           </div>
@@ -1332,7 +1436,7 @@ function renderModule6(data) {
           ${cvd.divergenceLabel || '数据计算中'}
         </div>
         <div class="metric-explain" style="margin-top:8px">
-          <strong>决策：</strong>${cvd.divergence === 'bearish_divergence'
+          <strong>${t('decisionLogic')}：</strong>${cvd.divergence === 'bearish_divergence'
             ? '🔴 合约拉盘+现货抛售=典型假突破！做高卖(Sell Call)胜率极高，坚决不追高。'
             : cvd.divergence === 'bullish_divergence'
             ? '🟢 现货吸筹+合约做空=潜在轧空行情，可偏向低买。'
@@ -1344,7 +1448,7 @@ function renderModule6(data) {
       <!-- Max Pain -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-name">期权最大痛点 (Max Pain)</span>
+          <span class="metric-name">${t('maxPainTitle')}</span>
           <span class="metric-badge badge-${mp && Math.abs(mp.distPct) < 3 ? 'danger' : 'safe'}">${mp ? mp.expiry : 'N/A'}</span>
         </div>
         ${mp ? `
@@ -1353,12 +1457,12 @@ function renderModule6(data) {
         </div>
         <div class="calc-grid" style="grid-template-columns:1fr 1fr">
           <div class="calc-item"><label>距现价</label><div class="val mono" style="color:${Math.abs(mp.distPct) < 3 ? 'var(--red)' : 'var(--green)'}">${mp.distPct > 0 ? '+' : ''}${mp.distPct}%</div></div>
-          <div class="calc-item"><label>引力方向</label><div class="val mono" style="color:${mp.direction === 'above' ? 'var(--green)' : 'var(--red)'}">${mp.direction === 'above' ? 'Max Pain 在上方 ↑' : 'Max Pain 在下方 ↓'}</div></div>
-          <div class="calc-item"><label>到期日</label><div class="val mono" style="font-size:.8rem">${mp.expiry}</div></div>
-          <div class="calc-item"><label>期权OI</label><div class="val mono" style="font-size:.8rem">${mp.totalOI?.toLocaleString() || 'N/A'}</div></div>
+          <div class="calc-item"><label>${t('gravity')}</label><div class="val mono" style="color:${mp.direction === 'above' ? 'var(--green)' : 'var(--red)'}">${mp.direction === 'above' ? 'Max Pain 在上方 ↑' : 'Max Pain 在下方 ↓'}</div></div>
+          <div class="calc-item"><label>${t('expiry')}</label><div class="val mono" style="font-size:.8rem">${mp.expiry}</div></div>
+          <div class="calc-item"><label>${t('optionOI')}</label><div class="val mono" style="font-size:.8rem">${mp.totalOI?.toLocaleString() || 'N/A'}</div></div>
         </div>
         <div class="metric-explain">
-          <strong>周五策略：</strong>做市商有极强动力在交割前将价格向 Max Pain ($${fmt(mp.strike)}) 驱赶。
+          <strong>${t('fridayStrategy')}：</strong>做市商有极强动力在交割前将价格向 Max Pain ($${fmt(mp.strike)}) 驱赶。
           ${mp.direction === 'below'
             ? `现价高于 Max Pain ${Math.abs(mp.distPct)}%，周五前价格可能下行。低买执行价不得高于 $${fmt(mp.strike)}！`
             : `现价低于 Max Pain ${Math.abs(mp.distPct)}%，周五前价格可能上行。高卖执行价不得低于 $${fmt(mp.strike)}！`}
