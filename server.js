@@ -70,26 +70,32 @@ function computeDecision() {
   if (bb.percentile<5 && adx.value>30 && adx.trend==='rising') gv.push({severity:'red', tag:'单边爆发', reason:`BB极低+ADX=${adx.value}↑`, action:'暂停'});
   const hasRed=gv.some(v=>v.severity==='red'), hasYellow=gv.some(v=>v.severity==='yellow');
 
-  // ── 通用评分工具 ──
+  // ── 五档动态风控系统 ──
   function gradeFromScore(s, vetoed) {
-    if (vetoed) return {grade:'🚫 熔断', apy:'0%', color:'red'};
-    if (hasRed) return {grade:'⛔ 全局停止', apy:'0%', color:'red'};
-    if (hasYellow) return {grade:'⚠ 降级', apy:'5-10%', color:'yellow'};
-    if (s>=80) return {grade:'🟢 强烈推荐', apy:'20-30%', color:'green'};
-    if (s>=60) return {grade:'🟢 推荐', apy:'15-20%', color:'green'};
-    if (s>=40) return {grade:'🟡 一般', apy:'10-15%', color:'yellow'};
-    return {grade:'🔴 不推荐', apy:'5-10%', color:'red'};
+    if (vetoed) return {grade:'🚫 熔断', tier:0, apy:'0%', color:'red', position:'0%', tierLabel:'熔断'};
+    if (hasRed) return {grade:'🔴 红灯暂停', tier:1, apy:'0%', color:'red', position:'0%', tierLabel:'红灯暂停'};
+    if (s < 30 || hasYellow) return {grade:'🔴 红灯暂停', tier:1, apy:'0%', color:'red', position:'0%',
+      tierLabel:'红灯暂停', note:'绝对禁止，空仓规避'};
+    if (s < 50) return {grade:'🟡 黄灯防守', tier:2, apy:'5-10%', color:'yellow', position:'20-30%',
+      tierLabel:'黄灯防守', note:'预警模式，强制降级运行'};
+    if (s < 70) return {grade:'🟢 绿灯保守', tier:3, apy:'10-15%', color:'green', position:'50-60%',
+      tierLabel:'绿灯保守', note:'环境温和，安全第一不追收益'};
+    if (s < 85) return {grade:'🟩 绿灯标准', tier:4, apy:'15-20%', color:'green', position:'80-100%',
+      tierLabel:'绿灯标准', note:'条件优良，正常执行策略'};
+    return {grade:'❇️ 深绿进攻', tier:5, apy:'20-30%', color:'green', position:'100%',
+      tierLabel:'深绿进攻', note:'极佳窗口，收割情绪溢价'};
   }
+
   function calcStrike(s, dir, vetoed) {
-    if (vetoed||hasRed) return {pct:0, price:0};
+    if (vetoed||hasRed||s<30) return {pct:0, price:0};
     let pct;
-    if (hasYellow) pct=Math.max(10, atr.safe15x*1.5);
-    else if (s>=80) pct=atr.pct;
-    else if (s>=60) pct=atr.safe15x;
-    else if (s>=40) pct=atr.safe15x*1.3;
-    else pct=atr.safe15x*1.6;
-    pct=Math.round(pct*10)/10;
-    return { pct, price: Math.round(price*(dir==='put'? 1-pct/100 : 1+pct/100)) };
+    if (s < 50)       pct = atr.pct * 2.5;  // 黄灯: 2.5倍ATR
+    else if (s < 70)  pct = atr.safe15x;     // 绿灯保守: 1.5倍ATR
+    else if (s < 85)  pct = atr.pct * 1.2;   // 绿灯标准: 1~1.5倍ATR
+    else              pct = atr.pct * 0.8;   // 深绿进攻: 0.8倍ATR
+    if (hasYellow) pct = Math.max(pct, atr.pct * 2.5);
+    pct = Math.round(pct * 10) / 10;
+    return { pct, price: Math.round(price * (dir === 'put' ? 1 - pct/100 : 1 + pct/100)) };
   }
 
   // ═══ 📉 低买评分 (Sell Put) ═══
@@ -351,65 +357,114 @@ function computeDecision() {
       note:`双向收租: 低买<$${pStrike.price.toLocaleString()} 且 高卖>$${cStrike.price.toLocaleString()}`};
   }
 
-  // ═══ 期限 × APR 联合建议矩阵 ═══
+  // ═══ 期限 × APR 联合建议矩阵 (五档制) ═══
   const dayOfWeek = new Date().getUTCDay(); // 0=Sun ... 5=Fri 6=Sat
   const isFriday = dayOfWeek === 5;
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
   const atrPct = atr.pct || 3.5;
 
-  function buildTenorMatrix(score, dir, vetoed) {
-    if (vetoed || hasRed) {
-      return {
-        h24: { status:'禁止', apy:'0%', dist:0, strike:0, note:'全局停止或熔断' },
-        h48: { status:'禁止', apy:'0%', dist:0, strike:0, note:'全局停止或熔断' },
-        h72: { status:'禁止', apy:'0%', dist:0, strike:0, note:'全局停止或熔断' },
-      };
-    }
-
+  function buildTenorMatrix(score, dir, vetoed, gradeObj) {
+    const tier = gradeObj.tier || 0;
     const mult = dir === 'put' ? -1 : 1;
     const calcP = (pct) => Math.round(price * (1 + mult * pct / 100));
+    const r = (v) => Math.round(v * 10) / 10;
 
-    if (score >= 80) {
-      // 高分环境
+    const HALT = { status:'🚨禁止', apy:'0%', dist:0, strike:0, note:'红灯暂停/熔断，空仓规避' };
+
+    if (tier <= 1 || vetoed) {
+      return { h24:HALT, h48:HALT, h72:HALT, h96:HALT };
+    }
+
+    if (tier === 2) { // 黄灯防守 (30-49分)
       return {
-        h24: { status:'🟢推荐', apy:'20-30%', dist: Math.round(atrPct*10)/10, strike: calcP(atrPct), note:`贴近1倍ATR，大胆收割Theta` },
-        h48: { status:'🟢推荐', apy:'18-24%', dist: Math.round(atrPct*1.5*10)/10, strike: calcP(atrPct*1.5), note:`退守1.5倍ATR，保留容错` },
-        h72: { status: hasYellow ? '⚠降级' : (isFriday ? '🟡谨慎' : '⚠不建议'),
-          apy: hasYellow ? '5-10%' : '12-18%',
-          dist: Math.round(atrPct*2*10)/10,
-          strike: calcP(atrPct*2),
-          note: isFriday ? `周末流动性真空，必须2倍ATR以外` : `非周五不建议72h` },
-      };
-    } else if (score >= 50) {
-      // 中分环境
-      return {
-        h24: { status:'🟡可做', apy:'15-20%', dist: Math.round(atrPct*1.2*10)/10, strike: calcP(atrPct*1.2), note:`须有分形/清算墙屏障` },
-        h48: { status:'🟡谨慎', apy:'10-15%', dist: Math.round(atrPct*1.5*10)/10, strike: calcP(atrPct*1.5), note:`放置在强支撑/阻力外侧` },
-        h72: { status:'⛔不建议', apy:'—', dist:0, strike:0, note:`混沌市场持仓3天，方向随时质变` },
-      };
-    } else {
-      // 低分环境
-      return {
-        h24: { status:'⚠防守', apy:'5-10%', dist: Math.round(atrPct*3*10)/10, strike: calcP(atrPct*3), note:`退守3倍ATR，只赚确定性利息` },
-        h48: { status:'🔒极远端', apy:'<5%', dist: Math.round(atrPct*4*10)/10, strike: calcP(atrPct*4), note:`仅极远端，无合适产品则法币站岗` },
-        h72: { status:'🚫禁止', apy:'0%', dist:0, strike:0, note:`危险期跨3天 = 流动性提款机` },
+        h24: { status:'⚠防守', apy:'5-10%', dist:r(atrPct*2.5), strike:calcP(atrPct*2.5),
+          note:'仅限24h超短线，躲在第二道支撑/阻力后方', positionPct:'20-30%' },
+        h48: { status:'🔒极远端', apy:'<5%', dist:r(atrPct*3.5), strike:calcP(atrPct*3.5),
+          note:'仅极远端产品，无合适则法币站岗', positionPct:'10%' },
+        h72: { status:'🚫禁止', apy:'0%', dist:0, strike:0, note:'预警期禁止跨3天' },
+        h96: { status:'🚫禁止', apy:'0%', dist:0, strike:0, note:'预警期禁止跨4天' },
       };
     }
+
+    if (tier === 3) { // 绿灯保守 (50-69分)
+      return {
+        h24: { status:'🟢可做', apy:'10-15%', dist:r(atrPct*1.5), strike:calcP(atrPct*1.5),
+          note:'须有分形或清算墙屏障', positionPct:'50-60%' },
+        h48: { status:'🟡谨慎', apy:'8-12%', dist:r(atrPct*1.8), strike:calcP(atrPct*1.8),
+          note:'放置在强支撑/阻力外侧', positionPct:'40-50%' },
+        h72: { status: isFriday ? '🟡谨慎' : '⛔不建议', apy: isFriday ? '8-10%' : '—',
+          dist: isFriday ? r(atrPct*2.2) : 0, strike: isFriday ? calcP(atrPct*2.2) : 0,
+          note: isFriday ? '周五跨周末需额外扩大纵深' : '非周五不建议72h', positionPct: isFriday ? '30%' : '0%' },
+        h96: { status: isFriday ? '⚠防守' : '⛔不建议', apy: isFriday ? '5-8%' : '—',
+          dist: isFriday ? r(atrPct*2.8) : 0, strike: isFriday ? calcP(atrPct*2.8) : 0,
+          note: isFriday ? '跨4天惩罚加重，仅取安全利息' : '非周五禁止96h', positionPct: isFriday ? '15%' : '0%' },
+      };
+    }
+
+    if (tier === 4) { // 绿灯标准 (70-84分)
+      return {
+        h24: { status:'🟩推荐', apy:'15-20%', dist:r(atrPct*1.2), strike:calcP(atrPct*1.2),
+          note:'贴近1~1.5倍ATR，紧贴清算墙外侧', positionPct:'80-100%' },
+        h48: { status:'🟩推荐', apy:'12-18%', dist:r(atrPct*1.5), strike:calcP(atrPct*1.5),
+          note:'退守1.5倍ATR，保留容错空间', positionPct:'70-90%' },
+        h72: { status: isFriday ? '🟢可做' : '🟡谨慎', apy: isFriday ? '10-15%' : '10-12%',
+          dist:r(atrPct*2), strike:calcP(atrPct*2),
+          note: isFriday ? '周末流动性真空，2倍ATR以外' : '非周五谨慎做72h', positionPct: isFriday ? '60%' : '40%' },
+        h96: { status: isFriday ? '🟡谨慎' : '⛔不建议', apy: isFriday ? '8-12%' : '—',
+          dist: isFriday ? r(atrPct*2.5) : 0, strike: isFriday ? calcP(atrPct*2.5) : 0,
+          note: isFriday ? '跨4天期限衰减，降低APR预期' : '非周五不做96h', positionPct: isFriday ? '40%' : '0%' },
+      };
+    }
+
+    // tier === 5: 深绿进攻 (85-100分)
+    return {
+      h24: { status:'❇️进攻', apy:'20-30%', dist:r(atrPct*0.8), strike:calcP(atrPct*0.8),
+        note:'0.8倍ATR激进收割，确保在爆仓肉盾之后', positionPct:'100%' },
+      h48: { status:'❇️进攻', apy:'18-25%', dist:r(atrPct*1.2), strike:calcP(atrPct*1.2),
+        note:'1.2倍ATR，满仓收割溢价', positionPct:'100%' },
+      h72: { status: isFriday ? '🟩推荐' : '🟢可做', apy:'12-18%',
+        dist:r(atrPct*1.8), strike:calcP(atrPct*1.8),
+        note: isFriday ? '极佳环境+周五，1.8倍ATR' : '1.8倍ATR', positionPct: isFriday ? '80%' : '60%' },
+      h96: { status: isFriday ? '🟢可做' : '🟡谨慎', apy: isFriday ? '10-15%' : '8-12%',
+        dist:r(atrPct*2.2), strike:calcP(atrPct*2.2),
+        note: isFriday ? '深绿环境可承受96h' : '非周五谨慎', positionPct: isFriday ? '60%' : '30%' },
+    };
   }
 
-  const putTenor = buildTenorMatrix(ps, 'put', false);
-  const callTenor = buildTenorMatrix(cs, 'call', callVetoed);
+  const putTenor = buildTenorMatrix(ps, 'put', false, pg);
+  const callTenor = buildTenorMatrix(cs, 'call', callVetoed, cg);
 
-  // 根据星期几生成今日仓位建议
+  // 根据星期几 + 档位生成今日仓位建议
   const positionAdvice = [];
+  const putTier = pg.tier || 0;
+  const dayNames = ['日','一','二','三','四','五','六'];
+
   if (isWeekend) {
-    positionAdvice.push({ label:'周末', note:'建议不做新单，资金保留在活期理财' });
+    positionAdvice.push({ label:'周末休息', note:'建议不做新单，资金保留在活期理财', emoji:'🏖️' });
   } else if (isFriday) {
-    positionAdvice.push({ label:'仓位A (50%)', tenor:'72h', note:'周五→周一策略', detail: putTenor.h72 });
-    positionAdvice.push({ label:'仓位B (50%)', tenor:'48h', note:'周五→周日策略', detail: putTenor.h48 });
+    // 周五策略: 75% 做 72h (周一交割)，25% 做 96h (周二交割)
+    positionAdvice.push({
+      label:'主仓位 (75%)', tenor:'72h', emoji:'🎯',
+      note:`周五→周一交割 | 档位: ${pg.tierLabel}`,
+      detail: putTenor.h72,
+    });
+    positionAdvice.push({
+      label:'尾仓 (25%)', tenor:'96h', emoji:'🎯',
+      note:`周五→周二交割 | 期限衰减惩罚`,
+      detail: putTenor.h96,
+    });
   } else {
-    positionAdvice.push({ label:'仓位A (50%)', tenor:'24h', note:'短期滚动', detail: putTenor.h24 });
-    positionAdvice.push({ label:'仓位B (50%)', tenor:'48h', note:'中期稳健', detail: putTenor.h48 });
+    // 周一~周四: 50% 做 24h，50% 做 48h
+    positionAdvice.push({
+      label:'仓位A (50%)', tenor:'24h', emoji:'🎯',
+      note:`短期滚动 | 档位: ${pg.tierLabel}`,
+      detail: putTenor.h24,
+    });
+    positionAdvice.push({
+      label:'仓位B (50%)', tenor:'48h', emoji:'🎯',
+      note:`中期稳健 | 档位: ${pg.tierLabel}`,
+      detail: putTenor.h48,
+    });
   }
 
   return {
