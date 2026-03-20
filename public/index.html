@@ -19,10 +19,10 @@
 --purple:#a855f7;--purple-glow:#a855f740;
 --orange:#f97316;
 }
-html{font-size:16px;--fs-base:16}
+html{font-size:18px;--fs-base:18}
 html.fs-sm{font-size:14px;--fs-base:14}
-html.fs-md{font-size:16px;--fs-base:16}
-html.fs-lg{font-size:18px;--fs-base:18}
+html.fs-md{font-size:18px;--fs-base:18}
+html.fs-lg{font-size:20px;--fs-base:20}
 body{background:var(--bg-primary);color:var(--text-primary);font-family:'Noto Sans SC','JetBrains Mono',sans-serif;min-height:100vh;overflow-x:hidden;
 padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .mono{font-family:'JetBrains Mono',monospace;overflow-wrap:break-word}
@@ -179,10 +179,10 @@ background:linear-gradient(180deg,transparent,var(--text-primary),transparent)}
 
 /* ═══ Responsive: Tablet (≤900px) ═══ */
 @media(max-width:900px){
-html{font-size:14px}
+html{font-size:16px}
 html.fs-sm{font-size:13px}
-html.fs-md{font-size:14px}
-html.fs-lg{font-size:16px}
+html.fs-md{font-size:16px}
+html.fs-lg{font-size:18px}
 .dashboard{grid-template-columns:1fr}
 .traffic-light-bar{flex-direction:column;padding:12px 16px}
 .signal-main{flex-direction:column;align-items:flex-start;padding:16px}
@@ -198,10 +198,10 @@ html.fs-lg{font-size:16px}
 
 /* ═══ Responsive: Mobile (≤600px) ═══ */
 @media(max-width:600px){
-html{font-size:13px}
+html{font-size:15px}
 html.fs-sm{font-size:12px}
-html.fs-md{font-size:13px}
-html.fs-lg{font-size:15px}
+html.fs-md{font-size:15px}
+html.fs-lg{font-size:17px}
 
 /* Header: stack vertically */
 .header{flex-direction:column;align-items:flex-start;gap:10px;padding:12px 14px}
@@ -281,10 +281,10 @@ html.fs-lg{font-size:15px}
 
 /* ═══ Responsive: Small Mobile (≤380px) ═══ */
 @media(max-width:380px){
-html{font-size:12px}
+html{font-size:14px}
 html.fs-sm{font-size:11px}
-html.fs-md{font-size:12px}
-html.fs-lg{font-size:14px}
+html.fs-md{font-size:14px}
+html.fs-lg{font-size:16px}
 .btc-price .price{font-size:1.4rem}
 .signal-stats{gap:6px}
 .signal-stat{padding:5px 6px}
@@ -328,12 +328,16 @@ html.fs-lg{font-size:14px}
   </div>
   <div class="header-right">
     <div class="timestamp" id="timestamp">--</div>
+    <div class="fs-toggle" id="langToggle">
+      <button onclick="setLang('zh')" title="中文">中</button>
+      <button onclick="setLang('en')" title="English">EN</button>
+    </div>
     <div class="fs-toggle" id="fsToggle">
       <button onclick="setFontSize('sm')" title="小字号">小</button>
       <button onclick="setFontSize('md')" class="active" title="中字号">中</button>
       <button onclick="setFontSize('lg')" title="大字号">大</button>
     </div>
-    <button class="refresh-btn" onclick="forceRefresh()">⟳ 刷新数据</button>
+    <button class="refresh-btn" onclick="forceRefresh()"><span data-i18n="refresh">⟳ 刷新数据</span></button>
   </div>
 </div>
 
@@ -366,11 +370,84 @@ function setFontSize(size) {
   });
   try { localStorage.setItem('dualwin-fs', size); } catch(e) {}
 }
-// Restore saved preference
 try {
   const saved = localStorage.getItem('dualwin-fs');
   if (saved && ['sm','md','lg'].includes(saved)) setFontSize(saved);
 } catch(e) {}
+
+// ─── i18n (国际化) ───
+let currentLang = 'zh';
+const I18N = {
+  zh: {
+    refresh: '⟳ 刷新数据', refreshing: '⟳ 刷新中...', refreshFail: '⟳ 刷新失败', forceRefresh: '⟳ 强制刷新...',
+    sellPut: '低买 Sell Put', sellCall: '高卖 Sell Call',
+    suggestAPY: '建议年化', orderPrice: '挂单价', positionCap: '仓位上限',
+    tenorMatrix: '期限 × APR 矩阵', todayPlan: '今日执行方案',
+    globalVeto: '⛔ 全局否决门触发', strangleRec: '🎯 宽跨式双卖推荐 (Sell Strangle)',
+    halt: '🚨禁止', defense: '⚠防守', conservative: '🟢可做', standard: '🟩推荐', offense: '❇️进攻',
+    fuse: '熔断', redHalt: '🔴 红灯暂停', yellowDef: '🟡 黄灯防守',
+    greenCons: '🟢 绿灯保守', greenStd: '🟩 绿灯标准', deepGreen: '❇️ 深绿进攻',
+    tierNote1: '绝对禁止，空仓规避', tierNote2: '预警模式，强制降级运行',
+    tierNote3: '环境温和，安全第一不追收益', tierNote4: '条件优良，正常执行策略', tierNote5: '极佳窗口，收割情绪溢价',
+    position: '建议仓位', dataAge: '前更新', weekend: '建议不做新单，资金保留在活期理财',
+    tokyoTime: '东京', localTime: '本地',
+    dayNames: ['日','一','二','三','四','五','六'],
+    today: '今日是',
+  },
+  en: {
+    refresh: '⟳ Refresh', refreshing: '⟳ Refreshing...', refreshFail: '⟳ Failed', forceRefresh: '⟳ Force Refresh...',
+    sellPut: 'Sell Put (Buy Low)', sellCall: 'Sell Call (Sell High)',
+    suggestAPY: 'Target APY', orderPrice: 'Strike', positionCap: 'Position Cap',
+    tenorMatrix: 'Tenor × APY Matrix', todayPlan: "Today's Plan",
+    globalVeto: '⛔ Global Veto Triggered', strangleRec: '🎯 Sell Strangle Recommended',
+    halt: '🚨Halt', defense: '⚠Defense', conservative: '🟢Okay', standard: '🟩Go', offense: '❇️Attack',
+    fuse: 'Fused', redHalt: '🔴 Red Halt', yellowDef: '🟡 Yellow Defense',
+    greenCons: '🟢 Light Green', greenStd: '🟩 Standard Green', deepGreen: '❇️ Deep Green',
+    tierNote1: 'Absolute halt, stay in cash', tierNote2: 'Warning mode, forced downgrade',
+    tierNote3: 'Mild conditions, safety first', tierNote4: 'Good conditions, execute normally', tierNote5: 'Prime window, harvest premiums',
+    position: 'Position', dataAge: 'ago', weekend: 'Weekend — no new trades, keep funds in savings',
+    tokyoTime: 'Tokyo', localTime: 'Local',
+    dayNames: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    today: 'Today is',
+  }
+};
+function t(key) { return (I18N[currentLang] || I18N.en)[key] || (I18N.en)[key] || key; }
+
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('#langToggle button').forEach(btn => {
+    btn.classList.toggle('active', (lang === 'zh' && btn.textContent.trim() === '中') || (lang === 'en' && btn.textContent.trim() === 'EN'));
+  });
+  try { localStorage.setItem('dualwin-lang', lang); } catch(e) {}
+  // Re-render if we have data
+  if (lastData) refreshData();
+}
+
+// Detect browser language
+(function initLang() {
+  try {
+    const saved = localStorage.getItem('dualwin-lang');
+    if (saved && ['zh','en'].includes(saved)) { currentLang = saved; }
+    else {
+      const bl = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+      currentLang = bl.startsWith('zh') ? 'zh' : 'en';
+    }
+  } catch(e) { currentLang = 'en'; }
+  document.querySelectorAll('#langToggle button').forEach(btn => {
+    btn.classList.toggle('active', (currentLang === 'zh' && btn.textContent.trim() === '中') || (currentLang === 'en' && btn.textContent.trim() === 'EN'));
+  });
+})();
+
+// ─── Timezone Utilities ───
+function formatMultiTZ() {
+  const now = new Date();
+  const opts = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+  const tokyo = now.toLocaleTimeString('ja-JP', { ...opts, timeZone: 'Asia/Tokyo' });
+  const local = now.toLocaleTimeString(undefined, opts);
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g,' ');
+  const dateStr = now.toLocaleDateString(currentLang === 'zh' ? 'zh-CN' : 'en-US', { year:'numeric', month:'numeric', day:'numeric' });
+  return `${dateStr} | ${t('tokyoTime')} ${tokyo} | ${localTZ} ${local}`;
+}
 
 // ─── Real Data API Client ───
 // 从后端 API 拉取缓存数据，后端负责定时刷新
@@ -1419,11 +1496,11 @@ function renderReasons(decision) {
 
 // ─── Main Refresh ───
 async function refreshData() {
-  document.querySelector('.refresh-btn').textContent = '⟳ 刷新中...';
+  document.querySelector('.refresh-btn').textContent = t('refreshing');
 
   const raw = await fetchDashboardData();
   if (!raw) {
-    document.querySelector('.refresh-btn').textContent = '⟳ 刷新失败';
+    document.querySelector('.refresh-btn').textContent = t('refreshFail');
     return;
   }
 
@@ -1439,11 +1516,12 @@ async function refreshData() {
   changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
   changeEl.className = `change ${change >= 0 ? 'up' : 'down'}`;
 
-  // 显示数据新鲜度
+  // 显示数据新鲜度 + 多时区
   const meta = raw.meta;
-  const age = meta ? `${meta.ageSeconds || Math.round((Date.now() - new Date(meta.lastRefresh).getTime()) / 1000)}s 前更新` : '';
+  const ageSec = meta ? (meta.ageSeconds || Math.round((Date.now() - new Date(meta.lastRefresh).getTime()) / 1000)) : 0;
+  const ageStr = ageSec ? `${ageSec}s ${t('dataAge')}` : '';
   document.getElementById('timestamp').textContent =
-    new Date().toLocaleString('zh-CN', { hour12: false }) + (age ? ` · 数据${age}` : '');
+    formatMultiTZ() + (ageStr ? ` · ${ageStr}` : '');
 
   renderTrafficLight(decision, data);
   renderReasons(decision);
@@ -1455,12 +1533,12 @@ async function refreshData() {
   renderModule6(data);
 
   setTimeout(() => drawIVRVChart(iv, rv), 100);
-  document.querySelector('.refresh-btn').textContent = '⟳ 刷新数据';
+  document.querySelector('.refresh-btn').textContent = t('refresh');
 }
 
 // 手动触发后端重新拉取
 async function forceRefresh() {
-  document.querySelector('.refresh-btn').textContent = '⟳ 强制刷新...';
+  document.querySelector('.refresh-btn').textContent = t('forceRefresh');
   try {
     await fetch(`${API_BASE}/api/refresh`, { method: 'POST' });
   } catch(e) {}
