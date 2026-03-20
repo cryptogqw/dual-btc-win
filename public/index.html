@@ -511,6 +511,92 @@ const I18N = {
 function t(key) { return (I18N[currentLang] || I18N.en)[key] || (I18N.en)[key] || key; }
 function tx(zh, en) { return currentLang === 'zh' ? zh : en; }
 
+// Backend string translator: maps Chinese backend output to English
+const BE_MAP = {
+  // Grades
+  '🚫 熔断':'🚫 Fused', '🔴 红灯暂停':'🔴 Red Halt', '🟡 黄灯防守':'🟡 Yellow Defense',
+  '🟢 绿灯保守':'🟢 Light Green', '🟩 绿灯标准':'🟩 Standard', '❇️ 深绿进攻':'❇️ Deep Green',
+  // Tier notes
+  '绝对禁止，空仓规避':'Absolute halt, stay in cash',
+  '预警模式，强制降级运行':'Warning mode, forced downgrade',
+  '环境温和，安全第一不追收益':'Mild conditions, safety first',
+  '条件优良，正常执行策略':'Good conditions, execute normally',
+  '极佳窗口，收割情绪溢价':'Prime window, harvest premiums',
+  // Factor names
+  'IV溢价丰富':'IV Premium Rich', 'IV溢价充足':'IV Premium Good', 'IV溢价一般':'IV Premium Fair', 'IV溢价薄弱':'IV Premium Weak',
+  '🛡恐慌溢价(极佳)':'🛡Panic Premium(Great)', '偏度中性':'Skew Neutral',
+  '🚨极端恐慌(熔断)':'🚨Extreme Panic(Halt)', '⚠FOMO市场(Put廉价)':'⚠FOMO(Put Cheap)', '⛔极度FOMO(Put无利)':'⛔FOMO(Put No Profit)',
+  '🟢贪婪溢价(极佳)':'🟢Greed Premium(Great)', '⚠恐慌期(Call廉价)':'⚠Panic(Call Cheap)', '⛔恐慌极值(禁高卖)':'⛔Panic(No Sell Call)',
+  '🚨极端FOMO(熔断)':'🚨Extreme FOMO(Halt)',
+  '深度震荡':'Deep Range', '震荡':'Range', '酝酿突破⚡':'Brewing⚡', '趋势过渡':'Transitioning', '⚠强趋势':'⚠Strong Trend',
+  '下方支撑密集':'Dense Support Below', '下方支撑':'Support Below', '支撑稀疏':'Sparse Support', '无支撑⚠':'No Support⚠',
+  '🛡清算墙护城河':'🛡Liq Wall Moat', '清算结构中性':'Liq Neutral', '清算墙较远':'Liq Wall Distant',
+  '🚨挡在猎杀路线':'🚨On Kill Path', '⚠紧贴清算墙':'⚠Too Close to Liq Wall',
+  '费率正常':'Funding Normal', '费率偏高':'Funding High', '⚠多头过热':'⚠Longs Overheated',
+  '极度负费率(反转)':'Extreme -FR(Reversal)', '负费率':'Negative FR',
+  // Call factors
+  '阻力沉重':'Heavy Resistance', '有阻力':'Some Resistance', '阻力稀疏':'Sparse Resistance', '无阻力⚠':'No Resistance⚠',
+  '假突破(CVD背离)':'Fake Breakout(CVD)', '现货在卖':'Spot Selling', '上涨真实⚠':'Real Rally⚠', 'CVD中性':'CVD Neutral',
+  '多头极拥挤':'Longs Crowded', '多头偏拥挤':'Longs Moderate', '费率低/负':'FR Low/Neg',
+  '🚨轧空猎杀路线':'🚨Short Squeeze Path', '⚠紧贴轧空区':'⚠Near Squeeze Zone', '🛡轧空天花板护盾':'🛡Squeeze Ceiling Shield',
+  '清算结构较远':'Liq Distant', '无轧空风险':'No Squeeze Risk',
+  '⚠MSTR融资买入中':'⚠MSTR Buying Active',
+  // Tenor statuses
+  '🚨禁止':'🚨Halt', '⚠防守':'⚠Defense', '🟢可做':'🟢Okay', '🟡谨慎':'🟡Caution', '🟩推荐':'🟩Go', '❇️进攻':'❇️Attack',
+  '🔒极远端':'🔒Far OTM', '⛔不建议':'⛔Not Advised', '🚫禁止':'🚫Halt',
+  // Position labels
+  '主仓位 (75%)':'Main (75%)', '尾仓 (25%)':'Tail (25%)', '仓位A (50%)':'Pos A (50%)', '仓位B (50%)':'Pos B (50%)',
+  '周末休息':'Weekend Rest',
+  // Position notes
+  '周五→周一交割':'Fri→Mon Settlement', '周五→周二交割':'Fri→Tue Settlement',
+  '期限衰减惩罚':'Tenor decay penalty', '短期滚动':'Short-term rolling', '中期稳健':'Medium-term steady',
+  '档位:':'Tier:', '档位: ':'Tier: ',
+  // Tenor notes
+  '贴近1倍ATR，大胆收割Theta':'Near 1x ATR, bold Theta harvest',
+  '0.8倍ATR激进收割，确保在爆仓肉盾之后':'0.8x ATR aggressive, behind liq shield',
+  '1.2倍ATR，满仓收割溢价':'1.2x ATR, full position premium harvest',
+  '退守1.5倍ATR，保留容错':'1.5x ATR, error margin preserved',
+  '须有分形/清算墙屏障':'Fractal/liq wall required',
+  '放置在强支撑/阻力外侧':'Beyond strong S/R levels',
+  '周末流动性真空，必须2倍ATR以外':'Weekend liquidity void, min 2x ATR',
+  '周末流动性真空，2倍ATR以外':'Weekend liquidity void, 2x ATR',
+  '极佳环境+周五，1.8倍ATR':'Great env + Fri, 1.8x ATR',
+  '深绿环境可承受96h':'Deep green can handle 96h',
+  '跨4天期限衰减，降低APR预期':'4-day decay, lower APR expectation',
+  '退守3倍ATR，只赚确定性利息':'3x ATR, certain interest only',
+  '仅极远端产品，无合适则法币站岗':'Far OTM only, or stay in fiat',
+  '仅限24h超短线，躲在第二道支撑/阻力后方':'24h only, behind 2nd S/R level',
+  '仅极远端，无合适则法币站岗':'Far OTM only, or stay in fiat',
+  '预警期禁止跨3天':'No 3-day in warning', '预警期禁止跨4天':'No 4-day in warning',
+  '混沌市场持仓3天，方向随时质变':'Chaotic market, direction may flip in 3d',
+  '非周五不建议72h':'72h not advised except Fri', '非周五不做96h':'96h only on Fri',
+  '非周五禁止96h':'96h prohibited except Fri', '非周五谨慎做72h':'72h cautious except Fri',
+  '非周五谨慎':'Cautious except Fri', '非周五不建议':'Not advised except Fri',
+  '全局停止或熔断':'Global halt or fused', '红灯暂停/熔断，空仓规避':'Red halt/fuse, stay in cash',
+  '周五跨周末需额外扩大纵深':'Extra depth for weekend cross',
+  '贴近1~1.5倍ATR，紧贴清算墙外侧':'1~1.5x ATR, just outside liq wall',
+  '1.8倍ATR':'1.8x ATR',
+  // Tier labels
+  '红灯暂停':'Red Halt', '黄灯防守':'Yellow Defense', '绿灯保守':'Light Green', '绿灯标准':'Standard', '深绿进攻':'Deep Green',
+  '熔断':'Fused',
+  // Veto/alert terms
+  '负期望':'Negative EV', '宏观风险':'Macro Risk', '单边爆发':'Breakout',
+  '波动压缩':'Vol Squeeze', '杠杆过热':'Leverage Overheated', '杠杆堆积':'Leverage Buildup',
+  'MSTR 24h内购买':'MSTR 24h Buy', '空头清算陷阱':'Short Liq Trap',
+};
+// Translate backend string (pass-through if zh or not found)
+function tB(s) {
+  if (!s || currentLang === 'zh') return s;
+  // Exact match
+  if (BE_MAP[s]) return BE_MAP[s];
+  // Partial match for dynamic strings
+  let r = s;
+  for (const [zh, en] of Object.entries(BE_MAP)) {
+    if (r.includes(zh)) r = r.replace(zh, en);
+  }
+  return r;
+}
+
 function setLang(lang) {
   currentLang = lang;
   document.querySelectorAll('#langToggle button').forEach(btn => {
@@ -632,7 +718,7 @@ function renderTrafficLight(decision, data) {
   // ── Helper: render one scorecard ──
   function renderCard(side, card, icon, label, colorVar) {
     const s = card.score || 0;
-    const gr = card.grade || '加载中';
+    const gr = tB(card.grade) || '加载中';
     const apy = card.apy || '0%';
     const c = card.color || 'yellow';
     const vetoed = card.callVetoed || false;
@@ -646,7 +732,7 @@ function renderTrafficLight(decision, data) {
       const pct = f.m > 0 ? (f.s / f.m * 100) : 0;
       const barColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--yellow)' : 'var(--red)';
       return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:.75rem">
-        <span style="width:110px;color:var(--text-muted);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.n}</span>
+        <span style="width:110px;color:var(--text-muted);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tB(f.n)}</span>
         <div style="flex:1;height:5px;background:#1e293b;border-radius:3px;overflow:hidden">
           <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;transition:width .6s"></div>
         </div>
@@ -657,13 +743,13 @@ function renderTrafficLight(decision, data) {
     // Danger alerts
     const dangerAlerts = alerts.filter(a => a.level === 'danger');
     const alertsHTML = dangerAlerts.length > 0 ? dangerAlerts.map(a =>
-      `<div style="font-size:.72rem;color:var(--red);line-height:1.4;margin-top:4px">🚨 ${a.msg}</div>`
+      `<div style="font-size:.72rem;color:var(--red);line-height:1.4;margin-top:4px">🚨 ${tB(a.msg)}</div>`
     ).join('') : '';
 
     // Veto badges (call-specific)
     const vetoHTML = vetoed && (card.vetoes||[]).filter(v=>v.tag).length > 0
       ? (card.vetoes||[]).filter(v=>v.tag&&v.reason).map(v =>
-        `<div style="font-size:.72rem;color:var(--red);padding:4px 8px;background:var(--red-bg);border-radius:4px;margin-top:4px">🚫 <strong>${v.tag}</strong>: ${v.reason}</div>`
+        `<div style="font-size:.72rem;color:var(--red);padding:4px 8px;background:var(--red-bg);border-radius:4px;margin-top:4px">🚫 <strong>${tB(v.tag)}</strong>: ${tB(v.reason)}</div>`
       ).join('')
       : '';
 
@@ -675,7 +761,7 @@ function renderTrafficLight(decision, data) {
         <div>
           <div style="font-size:.8rem;color:var(--text-muted)">${label}</div>
           <div style="font-size:.95rem;font-weight:700">${gr}</div>
-          ${card.position ? `<div style="font-size:.65rem;color:var(--text-muted);margin-top:2px">' + t('position') + ': <span style="color:var(--${c})">${card.position}</span>${card.note ? ' · ' + card.note : ''}</div>` : ''}
+          ${card.position ? `<div style="font-size:.65rem;color:var(--text-muted);margin-top:2px">${t("position")}: <span style="color:var(--${c})">${tB(card.position)}</span>${card.note ? ' · ' + tB(card.note) : ""}</div>` : ''}
         </div>
         <div style="margin-left:auto;text-align:right">
           <div class="mono" style="font-size:1.8rem;font-weight:700;color:var(--${c})">${vetoed ? '—' : s}</div>
@@ -690,7 +776,7 @@ function renderTrafficLight(decision, data) {
           <div class="mono" style="font-size:1rem;font-weight:700;color:var(--${c})">${apy}</div>
         </div>
         <div style="flex:1;padding:8px;background:var(--bg-card-alt);border-radius:6px;text-align:center">
-          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">${side === 'put' ? '' + t('orderPrice') + ' <' : '' + t('orderPrice') + ' >'}</div>
+          <div style="font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">${side === 'put' ? t("orderPrice") + ' <' : t("orderPrice") + ' >'}</div>
           <div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${strike.price ? '$' + fmt(strike.price) : '—'}</div>
           <div style="font-size:.6rem;color:var(--text-muted)">${strike.pct ? (side==='put'?'-':'+')+strike.pct+'%' : ''}</div>
         </div>
@@ -707,7 +793,7 @@ function renderTrafficLight(decision, data) {
           const statusColor = t.status.includes('推荐')?'var(--green)':t.status.includes('可做')?'var(--cyan)':t.status.includes('谨慎')||t.status.includes('降级')?'var(--yellow)':t.status.includes('防守')?'var(--yellow)':t.status.includes('禁止')||t.status.includes('不建议')?'var(--red)':'var(--text-muted)';
           return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)10;font-size:.75rem">
             <span class="mono" style="width:32px;font-weight:700;color:var(--text-secondary)">${label}</span>
-            <span style="width:70px;font-size:.65rem;color:${statusColor};font-weight:600">${t.status}</span>
+            <span style="width:70px;font-size:.65rem;color:${statusColor};font-weight:600">${tB(t.status)}</span>
             <span class="mono" style="width:55px;color:var(--text-primary)">${t.apy}</span>
             <span class="mono" style="flex:1;color:var(--cyan);text-align:right">${t.strike ? (side==='put'?'<':'>')+'$'+fmt(t.strike) : '—'}</span>
             <span style="width:35px;text-align:right;font-size:.65rem;color:var(--text-muted)">${t.dist ? (side==='put'?'-':'+')+t.dist+'%' : ''}</span>
@@ -724,14 +810,14 @@ function renderTrafficLight(decision, data) {
   const gvHTML = gv.length > 0 ? `
     <div style="padding:10px 16px;background:${gv.some(v=>v.severity==='red') ? 'var(--red-bg)' : 'var(--yellow-bg)'};border-radius:8px;margin-bottom:12px;border:1px solid ${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'}30">
       <div style="font-size:.75rem;font-weight:700;color:${gv.some(v=>v.severity==='red') ? 'var(--red)' : 'var(--yellow)'};margin-bottom:4px">${t('globalVeto')}</div>
-      ${gv.map(v => `<div style="font-size:.8rem;color:var(--text-primary);line-height:1.5"><strong>[${v.tag}]</strong> ${v.reason} → ${v.action}</div>`).join('')}
+      ${gv.map(v => `<div style="font-size:.8rem;color:var(--text-primary);line-height:1.5"><strong>[${tB(v.tag)}]</strong> ${tB(v.reason)} → ${tB(v.action)}</div>`).join('')}
     </div>` : '';
 
   // ── Strangle recommendation ──
   const strangleHTML = d.strangle?.recommended ? `
     <div style="padding:10px 16px;background:linear-gradient(135deg,var(--green-bg),var(--cyan)08);border-radius:8px;margin-top:12px;border:1px solid var(--green)30">
       <div style="font-size:.8rem;font-weight:700;color:var(--green);margin-bottom:4px">${t('strangleRec')}</div>
-      <div style="font-size:.82rem;color:var(--text-secondary)">${d.strangle.note}</div>
+      <div style="font-size:.82rem;color:var(--text-secondary)">${tB(d.strangle.note)}</div>
     </div>` : '';
 
   // ── Position Advice ──
@@ -740,11 +826,11 @@ function renderTrafficLight(decision, data) {
   const positions = d.positionAdvice || [];
   const posHTML = positions.length > 0 ? `
     <div style="padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-top:12px">
-      <div style="font-size:.85rem;font-weight:700;color:var(--text-primary);margin-bottom:10px">📅 ${t('today')} ${dayLabel} — ${t('todayPlan')} <span style="font-size:.75rem;color:var(--text-muted);font-weight:400">${d.sellPut?.grade ? '| ' + d.sellPut.grade : ''}</span></div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text-primary);margin-bottom:10px">📅 ${t('today')} ${dayLabel} — ${t('todayPlan')} <span style="font-size:.75rem;color:var(--text-muted);font-weight:400">${d.sellPut?.grade ? '| ' + tB(d.sellPut.grade) : ''}</span></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${positions.map(p => {
           if (!p.detail) {
-            return `<div style="flex:1;min-width:200px;padding:14px;background:var(--bg-card-alt);border-radius:8px;text-align:center;color:var(--text-muted);font-size:.85rem">${p.emoji||'🏖️'} ${p.note||''}</div>`;
+            return `<div style="flex:1;min-width:200px;padding:14px;background:var(--bg-card-alt);border-radius:8px;text-align:center;color:var(--text-muted);font-size:.85rem">${p.emoji||'🏖️'} ${tB(p.note||"")}</div>`;
           }
           const dt = p.detail || {};
           const isOk = dt.status?.includes('推荐')||dt.status?.includes('可做')||dt.status?.includes('进攻');
@@ -752,17 +838,17 @@ function renderTrafficLight(decision, data) {
           const sc = isOk?'var(--green)':isBan?'var(--red)':'var(--yellow)';
           return `<div style="flex:1;min-width:220px;padding:12px;background:var(--bg-card-alt);border-radius:8px;border-left:3px solid ${sc}">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-size:.85rem;font-weight:700;color:var(--text-primary)">${p.emoji||'🎯'} ${p.label}</span>
-              <span style="font-size:.65rem;padding:2px 8px;border-radius:4px;background:${sc}20;color:${sc};font-weight:600">${p.tenor} ${dt.status||''}</span>
+              <span style="font-size:.85rem;font-weight:700;color:var(--text-primary)">${p.emoji||'🎯'} ${tB(p.label)}</span>
+              <span style="font-size:.65rem;padding:2px 8px;border-radius:4px;background:${sc}20;color:${sc};font-weight:600">${p.tenor} ${tB(dt.status||"")}</span>
             </div>
             ${!isBan && dt.apy && dt.apy !== '0%' ? `
             <div style="display:flex;gap:8px;margin-bottom:6px">
               <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">${t('targetAPY')}</div><div class="mono" style="font-size:1rem;font-weight:700;color:${sc}">${dt.apy}</div></div>
-              <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">' + t('orderPrice') + ' <</div><div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${dt.strike?'$'+fmt(dt.strike):'—'}</div></div>
+              <div style="flex:1;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">${t("orderPrice")} <</div><div class="mono" style="font-size:1rem;font-weight:700;color:var(--cyan)">${dt.strike?'$'+fmt(dt.strike):'—'}</div></div>
               ${dt.positionPct ? `<div style="flex:0.7;text-align:center;padding:6px;background:rgba(0,0,0,.2);border-radius:4px"><div style="font-size:.6rem;color:var(--text-muted)">${t('positionCap')}</div><div class="mono" style="font-size:.9rem;font-weight:700;color:var(--text-secondary)">${dt.positionPct}</div></div>` : ''}
             </div>
-            <div style="font-size:.72rem;color:var(--text-muted)">${p.note||''}</div>
-            <div style="font-size:.7rem;color:var(--text-secondary);margin-top:3px">${dt.note||''}</div>` : `<div style="font-size:.85rem;color:var(--red);text-align:center;padding:10px 0;font-weight:600">${dt.note||'禁止操作'}</div>`}
+            <div style="font-size:.72rem;color:var(--text-muted)">${tB(p.note||"")}</div>
+            <div style="font-size:.7rem;color:var(--text-secondary);margin-top:3px">${tB(dt.note||"")}</div>` : `<div style="font-size:.85rem;color:var(--red);text-align:center;padding:10px 0;font-weight:600">${tB(dt.note||"Halt")}</div>`}
           </div>`;
         }).join('')}
       </div>
@@ -771,11 +857,11 @@ function renderTrafficLight(decision, data) {
   // ── Top advice ──
   const adviceHTML = (d.topAdvice||[]).length > 0 ? `
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
-      ${d.topAdvice.map(a => `<div style="font-size:.75rem;padding:4px 10px;background:var(--bg-card-alt);border-radius:6px;color:var(--text-secondary)">${a}</div>`).join('')}
+      ${d.topAdvice.map(a => `<div style="font-size:.75rem;padding:4px 10px;background:var(--bg-card-alt);border-radius:6px;color:var(--text-secondary)">${tB(a)}</div>`).join('')}
     </div>` : '';
 
   // ── Max Pain hint ──
-  const mpHTML = d.maxPainHint ? `<div style="font-size:.75rem;color:var(--purple);margin-bottom:8px">🎯 ${d.maxPainHint}</div>` : '';
+  const mpHTML = d.maxPainHint ? `<div style="font-size:.75rem;color:var(--purple);margin-bottom:8px">🎯 ${tB(d.maxPainHint)}</div>` : '';
 
   el.innerHTML = `
     ${gvHTML}
@@ -895,7 +981,7 @@ function renderModule2(data) {
         <span class="metric-value" style="color:${data.bb.squeeze ? 'var(--red)' : data.bb.width < 6 ? 'var(--yellow)' : 'var(--green)'}">
           ${data.bb.width.toFixed(2)}%
         </span>
-        <span class="metric-sub">' + t('bbDailyWidth') + '</span>
+        <span class="metric-sub">${t("bbDailyWidth")}</span>
       </div>
       <div class="metric-bar">
         <div class="metric-bar-fill" style="width:${Math.min(100, data.bb.width * 10)}%;background:${data.bb.squeeze ? 'var(--red)' : data.bb.width < 6 ? 'var(--yellow)' : 'var(--green)'}"></div>
@@ -1092,7 +1178,7 @@ function renderModule4(data) {
         <div class="event-countdown ${isUrgent ? 'urgent' : 'normal'}">${isUrgent ? '⚠ ' : ''}${countdown}</div>
       </div>
     `;
-  }).join('') : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">' + t('noEvents') + '</div>';
+  }).join('') : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.8rem">${t("noEvents")}</div>';
 
   // Find major liquidation cluster
   const longLiqs = liqZones.filter(z => z.side === 'long').sort((a,b) => b.volume - a.volume);
