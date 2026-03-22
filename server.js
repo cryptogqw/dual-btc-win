@@ -233,37 +233,33 @@ function computeDecision() {
   else if(ivRvSpread>=3){cs+=6;cf.push({n:'IV溢价一般',s:6,m:15});}
   else{cs+=2;cf.push({n:'IV溢价薄弱',s:2,m:15});}
 
-  // B. Call偏度打分 — 不对称，逻辑与Put完全相反 (15)
-  // skewDiff 已在低买段定义: putIV - callIV
+  // B. Call偏度打分 — 高卖放宽版 (15)
   if (skewDiff < -20) {
-    // 极端FOMO熔断: Call被买爆，向上毫无阻力
-    cs += -15;
-    cf.push({n:'🚨极端FOMO(熔断)',s:0,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
-    ca.push({level:'danger',msg:`Vol Skew ${skewDiff.toFixed(1)}% 极端FOMO！Call被买爆，向上可能无阻力，极易卖飞`});
+    // 极端FOMO: 警告但不毁灭
+    cs += -8;
+    cf.push({n:'🚨极端FOMO',s:0,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
+    ca.push({level:'danger',msg:`Vol Skew ${skewDiff.toFixed(1)}% 极端FOMO，高卖需注意卖飞风险`});
   } else if (skewDiff < -5) {
-    // 适度贪婪: 最佳卖Call窗口，散户追高，趁机高价出租现货
     cs += 15;
     cf.push({n:'🟢贪婪溢价(极佳)',s:15,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
   } else if (skewDiff <= 2) {
-    // 中性
     cs += 8;
     cf.push({n:'偏度中性',s:8,m:15,d:`Skew ${skewDiff.toFixed(1)}%`});
   } else if (skewDiff <= 10) {
-    // 恐慌市: Call卖不上价，反弹可能很猛
-    cs += -3;
-    cf.push({n:'⚠恐慌期(Call廉价)',s:0,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
-    ca.push({level:'warn',msg:`Skew +${skewDiff.toFixed(1)}%，恐慌期Call权利金低，反弹踏空风险高`});
+    // 恐慌市: 轻度降分
+    cs += 2;
+    cf.push({n:'⚠恐慌期(Call偏低)',s:2,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
   } else {
-    // 极端恐慌中的反弹预期: 免费送出看涨期权
-    cs += -10;
-    cf.push({n:'⛔恐慌极值(禁高卖)',s:0,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
-    ca.push({level:'danger',msg:`Skew +${skewDiff.toFixed(1)}% 恐慌极值！底部做高卖 = 免费送出看涨权，极易踏空报复性反弹`});
+    // 极端恐慌: 中度降分
+    cs += -3;
+    cf.push({n:'⛔恐慌极值(Call廉价)',s:0,m:15,d:`Skew +${skewDiff.toFixed(1)}%`});
+    ca.push({level:'warn',msg:`Skew +${skewDiff.toFixed(1)}%，恐慌期Call权利金偏低`});
   }
 
-  // C. CVD 背离=假突破 (10)
+  // C. CVD 背离=假突破 (10) — 高卖放宽
   if(cvd?.divergence==='bearish_divergence'){cs+=10;cf.push({n:'假突破(CVD背离)',s:10,m:10,d:'合约拉盘+现货抛售'});}
-  else if(cvd?.divergence==='aligned'&&cvd.spotTrend==='selling'){cs+=6;cf.push({n:'现货在卖',s:6,m:10});}
-  else if(cvd?.divergence==='aligned'){cs+=2;cf.push({n:'上涨真实⚠',s:2,m:10});ca.push({level:'warn',msg:'CVD一致，上涨有真实动能'});}
+  else if(cvd?.divergence==='aligned'&&cvd.spotTrend==='selling'){cs+=7;cf.push({n:'现货在卖',s:7,m:10});}
+  else if(cvd?.divergence==='aligned'){cs+=4;cf.push({n:'上涨真实⚠',s:4,m:10});}
   else{cs+=5;cf.push({n:'CVD中性',s:5,m:10});}
 
   // ── 市场趋势 (25分) ──
@@ -281,61 +277,58 @@ function computeDecision() {
   else if(nRes>=1){cs+=3;cf.push({n:'阻力稀疏',s:3,m:10});}
   else{cf.push({n:'无阻力⚠',s:0,m:10});ca.push({level:'warn',msg:'上方无阻力，卖飞风险高'});}
 
-  // ── 执行价微观清算结构 (30分) — 不对称惩罚机制 ──
-  // 寻找现价上方、1.5倍ATR范围内的大型空头清算墙
-  // 轧空比踩踏更剧烈（上行无理论天花板），惩罚更重
+  // ── 执行价微观清算结构 (30分) — 高卖放宽版 ──
   const shortClusters = zones.filter(z =>
     z.side === 'short' && z.price > price && z.price <= (price + 1.5 * atrAbs)
   ).sort((a,b) => b.volume - a.volume);
 
   if (shortClusters.length === 0) {
-    // 无轧空风险，略加分
-    cs += 8;
-    cf.push({n:'无轧空风险',s:8,m:30,d:'上方无大型空头清算'});
+    cs += 10;
+    cf.push({n:'无轧空风险',s:10,m:30,d:'上方无大型空头清算'});
   } else {
     const maxWall = shortClusters[0];
     const wallPriceFmt = '$' + fmt(maxWall.price);
 
     if (estCallStrike < maxWall.price) {
-      // 【致命】执行价在轧空目标价下方，爆拉行情会直接击穿
-      const penalty = -40;
+      // 执行价在轧空目标价下方 — 惩罚但非毁灭
+      const penalty = -20;
       cs += penalty;
       const shown = Math.max(0, 30 + penalty);
       cf.push({n:'🚨轧空猎杀路线', s:shown, m:30, d:`执行价<${wallPriceFmt}`});
-      ca.push({level:'danger', msg:`空头清算墙 ${wallPriceFmt}，你的执行价 $${fmt(estCallStrike)} 在其下方！做市商拉爆空头时你会被直接击穿卖飞！执行价必须高于 ${wallPriceFmt}`});
+      ca.push({level:'danger', msg:`空头清算墙 ${wallPriceFmt}，执行价 $${fmt(estCallStrike)} 在其下方，建议拉高执行价`});
     } else {
       const distPct = (estCallStrike - maxWall.price) / maxWall.price;
-      if (distPct <= 0.015) {
-        // 【危险】紧贴清算墙上方，轧空的市价买盘可冲破
-        cs += -15;
+      if (distPct <= 0.01) {
+        // 紧贴清算墙上方 <1% — 轻度惩罚
+        cs += -5;
         cf.push({n:'⚠紧贴轧空区', s:0, m:30, d:`距 ${wallPriceFmt} 仅+${(distPct*100).toFixed(1)}%`});
-        ca.push({level:'danger', msg:`执行价紧贴空头清算墙 ${wallPriceFmt} 上方，轧空上影线可穿透`});
+        ca.push({level:'warn', msg:`执行价距空头清算墙 ${wallPriceFmt} 仅${(distPct*100).toFixed(1)}%，注意轧空风险`});
       } else if (distPct <= 0.08) {
-        // 【安全】藏在轧空高潮点上方 >1.5%，庄家猎杀完通常回落
-        const volBonus = Math.min(8, shortClusters.length * 2);
-        const score = 18 + volBonus;
+        // 安全：藏在轧空高潮点上方 >1%
+        const volBonus = Math.min(10, shortClusters.length * 3);
+        const score = 20 + volBonus;
         cs += score;
         cf.push({n:'🛡轧空天花板护盾', s:Math.min(30,score), m:30, d:`${wallPriceFmt} 轧空后回落保护 (${shortClusters.length}簇)`});
       } else {
-        // 执行价很高，安全但没吃到护盾红利
-        cs += 6;
-        cf.push({n:'清算结构较远', s:6, m:30, d:`距 ${wallPriceFmt} >${(distPct*100).toFixed(1)}%`});
+        cs += 8;
+        cf.push({n:'清算结构较远', s:8, m:30, d:`距 ${wallPriceFmt} >${(distPct*100).toFixed(1)}%`});
       }
     }
   }
 
-  // ── 费率辅助 (10分) ──
+  // ── 费率辅助 (10分) — 高卖放宽 ──
   if(funding?.annualized>50){cs+=10;cf.push({n:'多头极拥挤',s:10,m:10,d:`${funding.annualized.toFixed(0)}%`});}
   else if(funding?.annualized>25){cs+=7;cf.push({n:'多头偏拥挤',s:7,m:10});}
-  else if(funding?.annualized>10){cs+=3;cf.push({n:'费率正常',s:3,m:10});}
-  else{cs+=0;cf.push({n:'费率低/负',s:0,m:10});}
+  else if(funding?.annualized>10){cs+=4;cf.push({n:'费率正常',s:4,m:10});}
+  else if(funding?.annualized>0){cs+=2;cf.push({n:'费率偏低',s:2,m:10});}
+  else{cs+=1;cf.push({n:'费率负值',s:1,m:10,d:`${(funding?.annualized||0).toFixed(0)}%`});}
 
-  // MSTR 现货买盘风险 (罚分项，非熔断)
+  // MSTR 现货买盘风险 (罚分项，非熔断，降低至-5)
   if (mstrBuyWithin24h) {
     // 已在否决区处理
   } else if (mstrData?.latestOffering?.isActive) {
-    cs = Math.max(0, cs - 15);
-    cf.push({n:'⚠MSTR融资买入中', s:0, m:15, d:'罚-15分'});
+    cs = Math.max(0, cs - 5);
+    cf.push({n:'⚠MSTR融资买入中', s:0, m:5, d:'罚-5分'});
   }
 
   if(maxPain?.direction==='above'&&Math.abs(maxPain.distPct)<3) ca.push({level:'danger',msg:`Max Pain $${maxPain.strike.toLocaleString()} 在上方仅${maxPain.distPct}%，高卖须高于此`});
