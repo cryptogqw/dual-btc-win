@@ -220,6 +220,26 @@ async function fetchAll(btcPrice) {
   // 5. 信号
   const signals = getMSTRSignal(navPremium, holdings.latestOffering, secFilings);
 
+  // ── 数据新鲜度 ──
+  // MSTR_HOLDINGS 是硬编码常量，bitbo 抓取失败时会一直沿用。
+  // 决策引擎里的「MSTR 24h 内购买 → 高卖熔断」依赖 lastPurchase.date，
+  // 常量一旦过期，这条熔断就永远不会触发；latestOffering.isActive 写死为 true
+  // 又会导致 -5 分一直扣。两者都必须靠下面的标记来判断能不能信。
+  const DAY = 86400000;
+  const ageOf = (d) => (d ? Math.floor((Date.now() - new Date(d + 'T00:00:00Z').getTime()) / DAY) : null);
+  const holdingsAgeDays = ageOf(holdings.lastUpdate);
+  const purchaseAgeDays = ageOf(holdings.lastPurchase?.date);
+  const isLive = !!liveHoldings;
+  // 抓取失败且常量超过 30 天，就认为这份数据不足以支撑熔断判断
+  const stale = !isLive && (holdingsAgeDays === null || holdingsAgeDays > 30);
+
+  const staleReasons = [];
+  if (stale) {
+    staleReasons.push(`MSTR 持仓为硬编码常量，已 ${holdingsAgeDays ?? '未知'} 天未更新`
+      + '（bitbo 自动抓取未成功）：24h 购买熔断不可信');
+  }
+  if (!apiKey) staleReasons.push('未配置 FINNHUB_API_KEY：股价 / NAV 溢价 / SEC 备案不可用');
+
   const result = {
     holdings: {
       totalBTC: holdings.totalBTC,
@@ -235,6 +255,11 @@ async function fetchAll(btcPrice) {
     navPremium,
     secFilings,
     signals,
+    stale,
+    staleReasons,
+    holdingsAgeDays,
+    purchaseAgeDays,
+    source: isLive ? 'bitbo_live' : 'hardcoded',
   };
 
   if (navPremium) {
