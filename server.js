@@ -43,7 +43,27 @@ async function fetchAndCache() {
   } catch(e) { errors.push(`Decision: ${e.message}`); console.error(`  ✗ 决策:`, e.message); }
 
   console.log(`[完成] ${Date.now()-t}ms, 错误: ${errors.length}\n${'='.repeat(50)}`);
-  cache.set('_meta', { lastRefresh: new Date().toISOString(), elapsed: Date.now()-t, errors });
+
+  // ── 数据质量汇总 ──
+  // 目的：让「静默失效」不可能发生。任何一个否决门失去数据支撑，
+  // 都必须在 /api/dashboard 的 meta 里显式暴露给前端。
+  const quality = [];
+  const mac = cache.get('macro'), ms = cache.get('mstr');
+  if (mac?.stale) (mac.staleReasons||[]).forEach(r => quality.push({source:'macro', level: mac.vetoOperational ? 'warn' : 'error', msg:r}));
+  if (mac && mac.vetoOperational === false) quality.push({source:'macro', level:'error', msg:'宏观 24h 否决门当前不可用'});
+  if (ms?.stale) (ms.staleReasons||[]).forEach(r => quality.push({source:'mstr', level:'warn', msg:r}));
+  if (!cache.get('liquidation')) quality.push({source:'liquidation', level:'warn', msg:'清算数据缺失，30 分清算结构项退化为中性分'});
+  if (!cache.get('derivatives')) quality.push({source:'derivatives', level:'warn', msg:'衍生品数据缺失，费率/CVD 项失效'});
+  errors.forEach(e => quality.push({source:'fetch', level:'error', msg:e}));
+  if (quality.length) console.warn(`[数据质量] ${quality.length} 项异常:\n  - ` + quality.map(q=>q.msg).join('\n  - '));
+
+  cache.set('_meta', {
+    lastRefresh: new Date().toISOString(),
+    elapsed: Date.now()-t,
+    errors,
+    dataQuality: quality,
+    hasBlockingIssue: quality.some(q => q.level === 'error'),
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -67,6 +87,11 @@ function computeDecision() {
   const gv = [];
   if (ivRvSpread < 0) gv.push({severity:'red', tag:'负期望', reason:`IV(${d.iv}%)<RV(${d.rv}%)，期权折价`, action:'空仓'});
   if (m?.hasUrgent) { const n=(m.events||[]).filter(e=>e.isUrgent&&e.impact==='high').map(e=>e.name).join('、'); gv.push({severity:'yellow', tag:'宏观风险', reason:`距 ${n} 不足24h`, action:'仅极保守单'}); }
+  else if (m && m.vetoOperational === false) {
+    // 日历为空 → 上面那条否决物理上不可能触发。必须说出来，
+    // 否则用户会把「没有黄灯」误读成「近期没有宏观事件」。
+    gv.push({severity:'yellow', tag:'宏观日历失效', reason:'宏观事件日历为空，无法判断 FOMC/CPI 临近', action:'请自行核对经济日历后再下单'});
+  }
   if (bb.percentile<5 && adx.value>30 && adx.trend==='rising') gv.push({severity:'red', tag:'单边爆发', reason:`BB极低+ADX=${adx.value}↑`, action:'暂停'});
   const hasRed=gv.some(v=>v.severity==='red'), hasYellow=gv.some(v=>v.severity==='yellow');
 
@@ -216,11 +241,16 @@ function computeDecision() {
   const estCallStrike = Math.round(price * (1 + atr.safe15x / 100));
 
   // 高卖一票否决
+  // ⚠️ 只有在 MSTR 数据确认新鲜时，24h 购买熔断才可信。
+  // 数据过期时不能当作「没有购买」，而应明确告知该熔断处于失效状态。
+  const mstrStale = !mstrData || mstrData.stale;
   const mstrLastBuy = mstrData?.lastPurchase?.date ? new Date(mstrData.lastPurchase.date) : null;
-  const mstrBuyWithin24h = mstrLastBuy && (Date.now() - mstrLastBuy.getTime()) < 24 * 3600000;
+  const mstrBuyWithin24h = !mstrStale && mstrLastBuy && (Date.now() - mstrLastBuy.getTime()) < 24 * 3600000;
   if (mstrBuyWithin24h) {
     cv.push({tag:'MSTR 24h内购买',reason:`MSTR ${mstrLastBuy.toISOString().slice(0,10)} 刚购入 ${mstrData.lastPurchase.btcAmount?.toLocaleString()||''} BTC，现货买盘冲击中`});
     ca.push({level:'danger',msg:'MSTR 24h内宣布购买BTC，高卖熔断'});
+  } else if (mstrStale) {
+    ca.push({level:'warn',msg:`MSTR 数据已过期${mstrData?.holdingsAgeDays ? `（${mstrData.holdingsAgeDays}天`+'）' : ''}，24h购买熔断当前不可用，请自行确认 Saylor 近期是否购币`});
   } else if (mstrData?.latestOffering?.isActive) {
     ca.push({level:'danger',msg:'MSTR正在执行融资计划购BTC，高卖需极度谨慎（非熔断）'});
   }
@@ -326,6 +356,9 @@ function computeDecision() {
   // MSTR 现货买盘风险 (罚分项，非熔断，降低至-5)
   if (mstrBuyWithin24h) {
     // 已在否决区处理
+  } else if (mstrStale) {
+    // 数据过期时不扣分：latestOffering.isActive 是写死的常量，
+    // 拿一份 2024 年的融资公告扣今天的分毫无意义。风险已通过 alert 告知。
   } else if (mstrData?.latestOffering?.isActive) {
     cs = Math.max(0, cs - 5);
     cf.push({n:'⚠MSTR融资买入中', s:0, m:5, d:'罚-5分'});

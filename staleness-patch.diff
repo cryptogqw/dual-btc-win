@@ -1,0 +1,299 @@
+diff --git a/public/index.html b/public/index.html
+index b89c993..1165151 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -314,6 +314,14 @@ html.fs-lg{font-size:16px}
+ .signal-icon{width:36px;height:36px;font-size:1rem}
+ .module{padding:10px}
+ }
++
++/* ── 数据质量横幅 ── */
++#dataQualityBanner{display:none;margin:10px 14px 0;padding:10px 14px;border-radius:8px;
++  font-size:13px;line-height:1.6;border:1px solid}
++#dataQualityBanner.error{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.45);color:#fca5a5}
++#dataQualityBanner.warn{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.40);color:#fcd34d}
++#dataQualityBanner .dq-title{font-weight:800;margin-bottom:4px}
++#dataQualityBanner ul{margin:0;padding-left:18px}
+ </style>
+ </head>
+ <body>
+@@ -341,6 +349,8 @@ html.fs-lg{font-size:16px}
+   </div>
+ </div>
+ 
++<div id="dataQualityBanner"></div>
++
+ <div class="traffic-light-bar" id="trafficLight">
+   <!-- Populated by JS -->
+ </div>
+@@ -1716,6 +1726,7 @@ async function refreshData() {
+   document.getElementById('timestamp').textContent =
+     formatMultiTZ() + (ageStr ? ` · ${ageStr}` : '');
+ 
++  renderDataQuality(meta);
+   renderTrafficLight(decision, data);
+   renderReasons(decision);
+   renderModule1(data);
+@@ -1729,6 +1740,23 @@ async function refreshData() {
+   document.querySelector('.refresh-btn').textContent = t('refresh');
+ }
+ 
++
++// ── 数据质量横幅：让「静默失效」不可能发生 ──
++function renderDataQuality(meta) {
++  const el = document.getElementById('dataQualityBanner');
++  if (!el) return;
++  const issues = (meta && meta.dataQuality) || [];
++  if (!issues.length) { el.style.display = 'none'; return; }
++  const hasError = issues.some(i => i.level === 'error');
++  el.className = hasError ? 'error' : 'warn';
++  el.style.display = 'block';
++  const title = hasError
++    ? (currentLang === 'en' ? 'Some risk checks are NOT active' : '部分风控检查当前未生效')
++    : (currentLang === 'en' ? 'Data quality warnings' : '数据质量提醒');
++  el.innerHTML = '<div class="dq-title">' + (hasError ? '\u26D4 ' : '\u26A0\uFE0F ') + title + '</div><ul>'
++    + issues.map(i => '<li>' + String(i.msg).replace(/[<>]/g, '') + '</li>').join('') + '</ul>';
++}
++
+ // 手动触发后端重新拉取
+ async function forceRefresh() {
+   document.querySelector('.refresh-btn').textContent = t('forceRefresh');
+diff --git a/server.js b/server.js
+index 2a59f0f..73442d8 100644
+--- a/server.js
++++ b/server.js
+@@ -43,7 +43,27 @@ async function fetchAndCache() {
+   } catch(e) { errors.push(`Decision: ${e.message}`); console.error(`  ✗ 决策:`, e.message); }
+ 
+   console.log(`[完成] ${Date.now()-t}ms, 错误: ${errors.length}\n${'='.repeat(50)}`);
+-  cache.set('_meta', { lastRefresh: new Date().toISOString(), elapsed: Date.now()-t, errors });
++
++  // ── 数据质量汇总 ──
++  // 目的：让「静默失效」不可能发生。任何一个否决门失去数据支撑，
++  // 都必须在 /api/dashboard 的 meta 里显式暴露给前端。
++  const quality = [];
++  const mac = cache.get('macro'), ms = cache.get('mstr');
++  if (mac?.stale) (mac.staleReasons||[]).forEach(r => quality.push({source:'macro', level: mac.vetoOperational ? 'warn' : 'error', msg:r}));
++  if (mac && mac.vetoOperational === false) quality.push({source:'macro', level:'error', msg:'宏观 24h 否决门当前不可用'});
++  if (ms?.stale) (ms.staleReasons||[]).forEach(r => quality.push({source:'mstr', level:'warn', msg:r}));
++  if (!cache.get('liquidation')) quality.push({source:'liquidation', level:'warn', msg:'清算数据缺失，30 分清算结构项退化为中性分'});
++  if (!cache.get('derivatives')) quality.push({source:'derivatives', level:'warn', msg:'衍生品数据缺失，费率/CVD 项失效'});
++  errors.forEach(e => quality.push({source:'fetch', level:'error', msg:e}));
++  if (quality.length) console.warn(`[数据质量] ${quality.length} 项异常:\n  - ` + quality.map(q=>q.msg).join('\n  - '));
++
++  cache.set('_meta', {
++    lastRefresh: new Date().toISOString(),
++    elapsed: Date.now()-t,
++    errors,
++    dataQuality: quality,
++    hasBlockingIssue: quality.some(q => q.level === 'error'),
++  });
+ }
+ 
+ // ═══════════════════════════════════════════════════════════════
+@@ -67,6 +87,11 @@ function computeDecision() {
+   const gv = [];
+   if (ivRvSpread < 0) gv.push({severity:'red', tag:'负期望', reason:`IV(${d.iv}%)<RV(${d.rv}%)，期权折价`, action:'空仓'});
+   if (m?.hasUrgent) { const n=(m.events||[]).filter(e=>e.isUrgent&&e.impact==='high').map(e=>e.name).join('、'); gv.push({severity:'yellow', tag:'宏观风险', reason:`距 ${n} 不足24h`, action:'仅极保守单'}); }
++  else if (m && m.vetoOperational === false) {
++    // 日历为空 → 上面那条否决物理上不可能触发。必须说出来，
++    // 否则用户会把「没有黄灯」误读成「近期没有宏观事件」。
++    gv.push({severity:'yellow', tag:'宏观日历失效', reason:'宏观事件日历为空，无法判断 FOMC/CPI 临近', action:'请自行核对经济日历后再下单'});
++  }
+   if (bb.percentile<5 && adx.value>30 && adx.trend==='rising') gv.push({severity:'red', tag:'单边爆发', reason:`BB极低+ADX=${adx.value}↑`, action:'暂停'});
+   const hasRed=gv.some(v=>v.severity==='red'), hasYellow=gv.some(v=>v.severity==='yellow');
+ 
+@@ -216,11 +241,16 @@ function computeDecision() {
+   const estCallStrike = Math.round(price * (1 + atr.safe15x / 100));
+ 
+   // 高卖一票否决
++  // ⚠️ 只有在 MSTR 数据确认新鲜时，24h 购买熔断才可信。
++  // 数据过期时不能当作「没有购买」，而应明确告知该熔断处于失效状态。
++  const mstrStale = !mstrData || mstrData.stale;
+   const mstrLastBuy = mstrData?.lastPurchase?.date ? new Date(mstrData.lastPurchase.date) : null;
+-  const mstrBuyWithin24h = mstrLastBuy && (Date.now() - mstrLastBuy.getTime()) < 24 * 3600000;
++  const mstrBuyWithin24h = !mstrStale && mstrLastBuy && (Date.now() - mstrLastBuy.getTime()) < 24 * 3600000;
+   if (mstrBuyWithin24h) {
+     cv.push({tag:'MSTR 24h内购买',reason:`MSTR ${mstrLastBuy.toISOString().slice(0,10)} 刚购入 ${mstrData.lastPurchase.btcAmount?.toLocaleString()||''} BTC，现货买盘冲击中`});
+     ca.push({level:'danger',msg:'MSTR 24h内宣布购买BTC，高卖熔断'});
++  } else if (mstrStale) {
++    ca.push({level:'warn',msg:`MSTR 数据已过期${mstrData?.holdingsAgeDays ? `（${mstrData.holdingsAgeDays}天`+'）' : ''}，24h购买熔断当前不可用，请自行确认 Saylor 近期是否购币`});
+   } else if (mstrData?.latestOffering?.isActive) {
+     ca.push({level:'danger',msg:'MSTR正在执行融资计划购BTC，高卖需极度谨慎（非熔断）'});
+   }
+@@ -326,6 +356,9 @@ function computeDecision() {
+   // MSTR 现货买盘风险 (罚分项，非熔断，降低至-5)
+   if (mstrBuyWithin24h) {
+     // 已在否决区处理
++  } else if (mstrStale) {
++    // 数据过期时不扣分：latestOffering.isActive 是写死的常量，
++    // 拿一份 2024 年的融资公告扣今天的分毫无意义。风险已通过 alert 告知。
+   } else if (mstrData?.latestOffering?.isActive) {
+     cs = Math.max(0, cs - 5);
+     cf.push({n:'⚠MSTR融资买入中', s:0, m:5, d:'罚-5分'});
+diff --git a/services/macro.js b/services/macro.js
+index 9382015..1ac8534 100644
+--- a/services/macro.js
++++ b/services/macro.js
+@@ -63,13 +63,62 @@ async function fetchFromFinnhub(apiKey) {
+     .filter(e => e.impact !== 'low');
+ }
+ 
+-const FALLBACK = [
+-  { name:'FOMC 利率决议', icon:'fed', impact:'high', date:'2026-05-06 18:00' },
+-  { name:'CPI 通胀数据', icon:'cpi', impact:'high', date:'2026-04-14 12:30' },
+-  { name:'非农就业数据', icon:'nfp', impact:'high', date:'2026-04-03 12:30' },
+-  { name:'CPI 通胀数据', icon:'cpi', impact:'high', date:'2026-05-13 12:30' },
+-  { name:'非农就业数据', icon:'nfp', impact:'high', date:'2026-05-08 12:30' },
++// ─── 兜底日历 ───
++// 只放「日程规则明确、可以放心硬编码」的两类事件：
++//   1. FOMC —— 美联储提前一年以上公布，声明在会议第二天 14:00 ET 发布
++//   2. 非农 (NFP) —— BLS 固定在每月第一个周五 08:30 ET，可用规则算出来
++// CPI 没有严格规则（通常每月 10~13 日之间浮动），故意不在兜底里猜——
++// 猜错日期比没有日期更危险（会造成假的否决或漏掉真的否决）。
++// CPI 需要 FINNHUB_API_KEY 才能覆盖。
++//
++// 数据来源: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
++// 2027 年为美联储公布的暂定日程，会前才最终确认。
++// ⚠️ 维护提醒：这张表覆盖到 2027-12。届时请回来续期，或直接配 FINNHUB_API_KEY。
++const FOMC_STATEMENTS = [
++  '2026-09-16 18:00',  // 9/15-16
++  '2026-10-28 18:00',  // 10/27-28
++  '2026-12-09 19:00',  // 12/8-9  (冬令时 EST)
++  '2027-01-27 19:00',  // 1/26-27 (EST)
++  '2027-03-17 18:00',  // 3/16-17
++  '2027-04-28 18:00',  // 4/27-28
++  '2027-06-09 18:00',  // 6/8-9
++  '2027-07-28 18:00',  // 7/27-28
++  '2027-09-15 18:00',  // 9/14-15
++  '2027-10-27 18:00',  // 10/26-27
++  '2027-12-08 19:00',  // 12/7-8  (EST)
+ ];
++const FOMC_CALENDAR_ENDS = '2027-12-31';
++
++/**
++ * 生成未来 N 个月的非农发布日 (每月第一个周五 08:30 ET)。
++ * 夏令时(3月中~11月初)= 12:30 UTC，冬令时 = 13:30 UTC。
++ * 对于「距事件是否不足 24h」这个用途，这个精度完全够用。
++ */
++function computeNFPDates(monthsAhead = 6) {
++  const out = [];
++  const now = new Date();
++  for (let i = 0; i < monthsAhead; i++) {
++    const y = now.getUTCFullYear();
++    const m = now.getUTCMonth() + i;
++    const first = new Date(Date.UTC(y, m, 1));
++    // 0=周日 ... 5=周五
++    const offset = (5 - first.getUTCDay() + 7) % 7;
++    const d = new Date(Date.UTC(y, m, 1 + offset));
++    const month = d.getUTCMonth() + 1;
++    const isDST = month >= 4 && month <= 10;   // 保守取值，边界月份差 1 小时无碍
++    const hh = isDST ? '12' : '13';
++    const pad = (n) => String(n).padStart(2, '0');
++    out.push(`${d.getUTCFullYear()}-${pad(month)}-${pad(d.getUTCDate())} ${hh}:30`);
++  }
++  return out;
++}
++
++function buildFallback() {
++  return [
++    ...FOMC_STATEMENTS.map(date => ({ name: 'FOMC 利率决议', icon: 'fed', impact: 'high', date })),
++    ...computeNFPDates(6).map(date => ({ name: '非农就业数据', icon: 'nfp', impact: 'high', date })),
++  ];
++}
+ 
+ async function fetchAll() {
+   console.log('[Macro] 加载宏观事件日历...');
+@@ -84,11 +133,11 @@ async function fetchAll() {
+       console.log(`  [Finnhub] 获取 ${rawEvents.length} 个美国经济事件`);
+     } catch (err) {
+       console.warn(`  [Finnhub] 失败: ${err.message}，用兜底日历`);
+-      rawEvents = FALLBACK;
++      rawEvents = buildFallback();
+     }
+   } else {
+     console.log('  未设 FINNHUB_API_KEY，用兜底日历。去 https://finnhub.io/register 免费获取');
+-    rawEvents = FALLBACK;
++    rawEvents = buildFallback();
+   }
+ 
+   const upcoming = rawEvents
+@@ -111,7 +160,34 @@ async function fetchAll() {
+     });
+ 
+   const urgent = upcoming.filter(e => e.isUrgent && e.impact === 'high');
+-  return { source, events: upcoming.slice(0,10), hasUrgent: urgent.length > 0, urgentCount: urgent.length };
++
++  // ── 失效检测 ──
++  // 这里过去出过一次静默失效：兜底日历里的日期全部过期后，upcoming 恒为空、
++  // hasUrgent 恒为 false，于是「距 FOMC/CPI 不足 24h → 黄灯」这条全局否决
++  // 永远不会触发，而界面上看不出任何异常。以下把这种情况显式暴露出来。
++  const stale = [];
++  if (upcoming.length === 0) {
++    stale.push('宏观日历为空：未来 30 天内没有任何事件');
++    console.error('  ⚠️ [Macro] 日历为空！宏观否决门当前完全失效。'
++      + (source === 'fallback' ? ' 请设置 FINNHUB_API_KEY，或检查兜底日历是否已过期。' : ''));
++  }
++  if (source === 'fallback') {
++    stale.push('未配置 FINNHUB_API_KEY，仅有 FOMC/非农兜底日历，CPI 等事件缺失');
++    if (Date.now() > new Date(FOMC_CALENDAR_ENDS + ' UTC').getTime()) {
++      stale.push(`兜底 FOMC 日历已到期（覆盖至 ${FOMC_CALENDAR_ENDS}），需要续期`);
++      console.error(`  ⚠️ [Macro] 兜底 FOMC 日历已过 ${FOMC_CALENDAR_ENDS}，请更新 FOMC_STATEMENTS`);
++    }
++  }
++
++  return {
++    source,
++    events: upcoming.slice(0, 10),
++    hasUrgent: urgent.length > 0,
++    urgentCount: urgent.length,
++    stale: stale.length > 0,
++    staleReasons: stale,
++    vetoOperational: upcoming.length > 0,   // 宏观否决门此刻是否真的能生效
++  };
+ }
+ 
+ module.exports = { fetchAll };
+diff --git a/services/mstr.js b/services/mstr.js
+index a41a123..fc83d6e 100644
+--- a/services/mstr.js
++++ b/services/mstr.js
+@@ -220,6 +220,26 @@ async function fetchAll(btcPrice) {
+   // 5. 信号
+   const signals = getMSTRSignal(navPremium, holdings.latestOffering, secFilings);
+ 
++  // ── 数据新鲜度 ──
++  // MSTR_HOLDINGS 是硬编码常量，bitbo 抓取失败时会一直沿用。
++  // 决策引擎里的「MSTR 24h 内购买 → 高卖熔断」依赖 lastPurchase.date，
++  // 常量一旦过期，这条熔断就永远不会触发；latestOffering.isActive 写死为 true
++  // 又会导致 -5 分一直扣。两者都必须靠下面的标记来判断能不能信。
++  const DAY = 86400000;
++  const ageOf = (d) => (d ? Math.floor((Date.now() - new Date(d + 'T00:00:00Z').getTime()) / DAY) : null);
++  const holdingsAgeDays = ageOf(holdings.lastUpdate);
++  const purchaseAgeDays = ageOf(holdings.lastPurchase?.date);
++  const isLive = !!liveHoldings;
++  // 抓取失败且常量超过 30 天，就认为这份数据不足以支撑熔断判断
++  const stale = !isLive && (holdingsAgeDays === null || holdingsAgeDays > 30);
++
++  const staleReasons = [];
++  if (stale) {
++    staleReasons.push(`MSTR 持仓为硬编码常量，已 ${holdingsAgeDays ?? '未知'} 天未更新`
++      + '（bitbo 自动抓取未成功）：24h 购买熔断不可信');
++  }
++  if (!apiKey) staleReasons.push('未配置 FINNHUB_API_KEY：股价 / NAV 溢价 / SEC 备案不可用');
++
+   const result = {
+     holdings: {
+       totalBTC: holdings.totalBTC,
+@@ -235,6 +255,11 @@ async function fetchAll(btcPrice) {
+     navPremium,
+     secFilings,
+     signals,
++    stale,
++    staleReasons,
++    holdingsAgeDays,
++    purchaseAgeDays,
++    source: isLive ? 'bitbo_live' : 'hardcoded',
+   };
+ 
+   if (navPremium) {
