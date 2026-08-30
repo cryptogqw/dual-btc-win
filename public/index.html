@@ -314,6 +314,14 @@ html.fs-lg{font-size:16px}
 .signal-icon{width:36px;height:36px;font-size:1rem}
 .module{padding:10px}
 }
+
+/* ── 数据质量横幅 ── */
+#dataQualityBanner{display:none;margin:10px 14px 0;padding:10px 14px;border-radius:8px;
+  font-size:13px;line-height:1.6;border:1px solid}
+#dataQualityBanner.error{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.45);color:#fca5a5}
+#dataQualityBanner.warn{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.40);color:#fcd34d}
+#dataQualityBanner .dq-title{font-weight:800;margin-bottom:4px}
+#dataQualityBanner ul{margin:0;padding-left:18px}
 </style>
 </head>
 <body>
@@ -340,6 +348,8 @@ html.fs-lg{font-size:16px}
     <button class="refresh-btn" onclick="forceRefresh()"><span data-i18n="refresh">⟳ 刷新数据</span></button>
   </div>
 </div>
+
+<div id="dataQualityBanner"></div>
 
 <div class="traffic-light-bar" id="trafficLight">
   <!-- Populated by JS -->
@@ -1716,6 +1726,7 @@ async function refreshData() {
   document.getElementById('timestamp').textContent =
     formatMultiTZ() + (ageStr ? ` · ${ageStr}` : '');
 
+  renderDataQuality(meta);
   renderTrafficLight(decision, data);
   renderReasons(decision);
   renderModule1(data);
@@ -1727,6 +1738,23 @@ async function refreshData() {
 
   setTimeout(() => drawIVRVChart(iv, rv), 100);
   document.querySelector('.refresh-btn').textContent = t('refresh');
+}
+
+
+// ── 数据质量横幅：让「静默失效」不可能发生 ──
+function renderDataQuality(meta) {
+  const el = document.getElementById('dataQualityBanner');
+  if (!el) return;
+  const issues = (meta && meta.dataQuality) || [];
+  if (!issues.length) { el.style.display = 'none'; return; }
+  const hasError = issues.some(i => i.level === 'error');
+  el.className = hasError ? 'error' : 'warn';
+  el.style.display = 'block';
+  const title = hasError
+    ? (currentLang === 'en' ? 'Some risk checks are NOT active' : '部分风控检查当前未生效')
+    : (currentLang === 'en' ? 'Data quality warnings' : '数据质量提醒');
+  el.innerHTML = '<div class="dq-title">' + (hasError ? '\u26D4 ' : '\u26A0\uFE0F ') + title + '</div><ul>'
+    + issues.map(i => '<li>' + String(i.msg).replace(/[<>]/g, '') + '</li>').join('') + '</ul>';
 }
 
 // 手动触发后端重新拉取
