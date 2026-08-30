@@ -63,13 +63,62 @@ async function fetchFromFinnhub(apiKey) {
     .filter(e => e.impact !== 'low');
 }
 
-const FALLBACK = [
-  { name:'FOMC 利率决议', icon:'fed', impact:'high', date:'2026-05-06 18:00' },
-  { name:'CPI 通胀数据', icon:'cpi', impact:'high', date:'2026-04-14 12:30' },
-  { name:'非农就业数据', icon:'nfp', impact:'high', date:'2026-04-03 12:30' },
-  { name:'CPI 通胀数据', icon:'cpi', impact:'high', date:'2026-05-13 12:30' },
-  { name:'非农就业数据', icon:'nfp', impact:'high', date:'2026-05-08 12:30' },
+// ─── 兜底日历 ───
+// 只放「日程规则明确、可以放心硬编码」的两类事件：
+//   1. FOMC —— 美联储提前一年以上公布，声明在会议第二天 14:00 ET 发布
+//   2. 非农 (NFP) —— BLS 固定在每月第一个周五 08:30 ET，可用规则算出来
+// CPI 没有严格规则（通常每月 10~13 日之间浮动），故意不在兜底里猜——
+// 猜错日期比没有日期更危险（会造成假的否决或漏掉真的否决）。
+// CPI 需要 FINNHUB_API_KEY 才能覆盖。
+//
+// 数据来源: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+// 2027 年为美联储公布的暂定日程，会前才最终确认。
+// ⚠️ 维护提醒：这张表覆盖到 2027-12。届时请回来续期，或直接配 FINNHUB_API_KEY。
+const FOMC_STATEMENTS = [
+  '2026-09-16 18:00',  // 9/15-16
+  '2026-10-28 18:00',  // 10/27-28
+  '2026-12-09 19:00',  // 12/8-9  (冬令时 EST)
+  '2027-01-27 19:00',  // 1/26-27 (EST)
+  '2027-03-17 18:00',  // 3/16-17
+  '2027-04-28 18:00',  // 4/27-28
+  '2027-06-09 18:00',  // 6/8-9
+  '2027-07-28 18:00',  // 7/27-28
+  '2027-09-15 18:00',  // 9/14-15
+  '2027-10-27 18:00',  // 10/26-27
+  '2027-12-08 19:00',  // 12/7-8  (EST)
 ];
+const FOMC_CALENDAR_ENDS = '2027-12-31';
+
+/**
+ * 生成未来 N 个月的非农发布日 (每月第一个周五 08:30 ET)。
+ * 夏令时(3月中~11月初)= 12:30 UTC，冬令时 = 13:30 UTC。
+ * 对于「距事件是否不足 24h」这个用途，这个精度完全够用。
+ */
+function computeNFPDates(monthsAhead = 6) {
+  const out = [];
+  const now = new Date();
+  for (let i = 0; i < monthsAhead; i++) {
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth() + i;
+    const first = new Date(Date.UTC(y, m, 1));
+    // 0=周日 ... 5=周五
+    const offset = (5 - first.getUTCDay() + 7) % 7;
+    const d = new Date(Date.UTC(y, m, 1 + offset));
+    const month = d.getUTCMonth() + 1;
+    const isDST = month >= 4 && month <= 10;   // 保守取值，边界月份差 1 小时无碍
+    const hh = isDST ? '12' : '13';
+    const pad = (n) => String(n).padStart(2, '0');
+    out.push(`${d.getUTCFullYear()}-${pad(month)}-${pad(d.getUTCDate())} ${hh}:30`);
+  }
+  return out;
+}
+
+function buildFallback() {
+  return [
+    ...FOMC_STATEMENTS.map(date => ({ name: 'FOMC 利率决议', icon: 'fed', impact: 'high', date })),
+    ...computeNFPDates(6).map(date => ({ name: '非农就业数据', icon: 'nfp', impact: 'high', date })),
+  ];
+}
 
 async function fetchAll() {
   console.log('[Macro] 加载宏观事件日历...');
@@ -84,11 +133,11 @@ async function fetchAll() {
       console.log(`  [Finnhub] 获取 ${rawEvents.length} 个美国经济事件`);
     } catch (err) {
       console.warn(`  [Finnhub] 失败: ${err.message}，用兜底日历`);
-      rawEvents = FALLBACK;
+      rawEvents = buildFallback();
     }
   } else {
     console.log('  未设 FINNHUB_API_KEY，用兜底日历。去 https://finnhub.io/register 免费获取');
-    rawEvents = FALLBACK;
+    rawEvents = buildFallback();
   }
 
   const upcoming = rawEvents
@@ -111,7 +160,34 @@ async function fetchAll() {
     });
 
   const urgent = upcoming.filter(e => e.isUrgent && e.impact === 'high');
-  return { source, events: upcoming.slice(0,10), hasUrgent: urgent.length > 0, urgentCount: urgent.length };
+
+  // ── 失效检测 ──
+  // 这里过去出过一次静默失效：兜底日历里的日期全部过期后，upcoming 恒为空、
+  // hasUrgent 恒为 false，于是「距 FOMC/CPI 不足 24h → 黄灯」这条全局否决
+  // 永远不会触发，而界面上看不出任何异常。以下把这种情况显式暴露出来。
+  const stale = [];
+  if (upcoming.length === 0) {
+    stale.push('宏观日历为空：未来 30 天内没有任何事件');
+    console.error('  ⚠️ [Macro] 日历为空！宏观否决门当前完全失效。'
+      + (source === 'fallback' ? ' 请设置 FINNHUB_API_KEY，或检查兜底日历是否已过期。' : ''));
+  }
+  if (source === 'fallback') {
+    stale.push('未配置 FINNHUB_API_KEY，仅有 FOMC/非农兜底日历，CPI 等事件缺失');
+    if (Date.now() > new Date(FOMC_CALENDAR_ENDS + ' UTC').getTime()) {
+      stale.push(`兜底 FOMC 日历已到期（覆盖至 ${FOMC_CALENDAR_ENDS}），需要续期`);
+      console.error(`  ⚠️ [Macro] 兜底 FOMC 日历已过 ${FOMC_CALENDAR_ENDS}，请更新 FOMC_STATEMENTS`);
+    }
+  }
+
+  return {
+    source,
+    events: upcoming.slice(0, 10),
+    hasUrgent: urgent.length > 0,
+    urgentCount: urgent.length,
+    stale: stale.length > 0,
+    staleReasons: stale,
+    vetoOperational: upcoming.length > 0,   // 宏观否决门此刻是否真的能生效
+  };
 }
 
 module.exports = { fetchAll };
