@@ -598,8 +598,17 @@ const BE_MAP = {
   'MSTR 24h内购买':'MSTR 24h Buy', '空头清算陷阱':'Short Liq Trap',
 };
 // Translate backend string (pass-through if zh or not found)
+// ⚠️ tB 的返回值全部经由模板字符串写进 innerHTML，所以必须转义。
+// 后端的否决理由里带有 "IV(36%)<RV(42%)" 这类文本，未转义时浏览器会把
+// "<RV(42%)…" 当成一个未闭合标签吞掉，导致整句连同后面的 "→ 空仓" 全部消失。
+function escHTML(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 function tB(s) {
-  if (!s || currentLang === 'zh') return s;
+  return escHTML(tBRaw(s));
+}
+function tBRaw(s) {
+  if (!s || currentLang === 'zh') return s || '';
   // Exact match
   if (BE_MAP[s]) return BE_MAP[s];
   // Partial match for dynamic strings
@@ -1297,7 +1306,7 @@ function renderModule5(data) {
   const signalsHTML = signals.map(s => {
     const c = s.type === 'danger' ? 'var(--red)' : s.type === 'warn' ? 'var(--yellow)' : 'var(--green)';
     const icon = s.type === 'danger' ? '🔴' : s.type === 'warn' ? '🟡' : '🟢';
-    return `<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:${c}10;border-left:3px solid ${c};font-size:.78rem;color:var(--text-secondary)">${icon} ${s.msg}</div>`;
+    return `<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:${c}10;border-left:3px solid ${c};font-size:.78rem;color:var(--text-secondary)">${icon} ${escHTML(s.msg)}</div>`;
   }).join('');
 
   // SEC filings HTML
@@ -1754,7 +1763,7 @@ function renderDataQuality(meta) {
     ? (currentLang === 'en' ? 'Some risk checks are NOT active' : '部分风控检查当前未生效')
     : (currentLang === 'en' ? 'Data quality warnings' : '数据质量提醒');
   el.innerHTML = '<div class="dq-title">' + (hasError ? '\u26D4 ' : '\u26A0\uFE0F ') + title + '</div><ul>'
-    + issues.map(i => '<li>' + String(i.msg).replace(/[<>]/g, '') + '</li>').join('') + '</ul>';
+    + issues.map(i => '<li>' + escHTML(i.msg) + '</li>').join('') + '</ul>';
 }
 
 // 手动触发后端重新拉取
